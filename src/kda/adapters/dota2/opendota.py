@@ -55,11 +55,7 @@ class OpenDotaClient:
                     continue
                 resp.raise_for_status()
                 data = resp.json()
-                self.cache.get  # noqa: B018 - keep cache handle warm
-                self.cache._store[key] = (0.0, data)  # bypass; store below
-                self.cache._store.pop(key, None)
-                self.cache.get(key)
-                self.cache.put = None  # type: ignore[attr-defined]
+                self.cache.set(key, data)
                 return data
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
@@ -77,8 +73,13 @@ class OpenDotaClient:
     async def player(self, account_id: int) -> dict[str, Any]:
         return await self._get(f"/players/{account_id}")
 
-    async def recent_matches(self, account_id: int, limit: int = 20) -> list[dict[str, Any]]:
+    async def matches(self, account_id: int, limit: int = 20) -> list[dict[str, Any]]:
         data = await self._get(f"/players/{account_id}/matches", limit=limit)
+        return data if isinstance(data, list) else []
+
+    async def recent_matches(self, account_id: int) -> list[dict[str, Any]]:
+        # Rich last-20 feed: includes gold_per_min / xp_per_min / last_hits.
+        data = await self._get(f"/players/{account_id}/recentMatches")
         return data if isinstance(data, list) else []
 
     async def heroes(self) -> list[dict[str, Any]]:
