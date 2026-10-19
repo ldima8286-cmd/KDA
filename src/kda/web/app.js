@@ -29,6 +29,7 @@ const fmtAgo = (ts) => {
   if (d < 86400) return Math.floor(d / 3600) + " ч";
   return Math.floor(d / 86400) + " дн";
 };
+const h_ratio = (k, d, a) => ((k + a) / Math.max(1, d)).toFixed(2);
 const rankName = (tier) => {
   if (!tier) return "Без ранга";
   const names = ["Herald", "Guardian", "Crusader", "Archon", "Legend", "Ancient", "Divine", "Immortal"];
@@ -168,16 +169,6 @@ function renderPlayer(profile) {
     .join("");
 
   const recentRows = profile.recent
-    .map(
-      (m) => `<tr>
-        <td>${heroCell(m.hero_id, h => h)}</td>
-        <td>${h._}</td>
-      </tr>`
-    )
-    .slice(0, 0)
-    .join("");
-
-  const recentHtml = profile.recent
     .map(
       (m) => `<tr>
         <td>${heroCell(m.hero_id, m.hero_name)}</td>
