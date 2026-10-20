@@ -1,4 +1,8 @@
-"""pytest-qt UI smoke tests: build the window with a fake service offscreen."""
+"""pytest-qt UI smoke tests: build the window with a fake service offscreen.
+
+Collected only by pytest; the core unittest job excludes this module
+(see the `-p` glob in CI) because it needs PySide6 + pytest-qt.
+"""
 from __future__ import annotations
 
 import os
