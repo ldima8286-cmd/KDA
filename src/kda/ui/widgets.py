@@ -452,6 +452,87 @@ _MONO = QFont()
 _MONO.setFamily("monospace")
 
 
+class AdvantageChart(QWidget):
+    """Signed line chart for radiant gold/xp advantage (positive = radiant)."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._series: list[tuple[str, list[int], str]] = []
+        self.setMinimumHeight(200)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def set_series(self, series: list[tuple[str, list[int], str]]) -> None:
+        """series: list of (label, values, colour)."""
+        self._series = [(label, vals or [], colour) for label, vals, colour in series if vals]
+        self.update()
+
+    def sizeHint(self) -> QSize:
+        return QSize(720, 200)
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, ARG002
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect().adjusted(56, 12, -12, -20)
+        if rect.width() < 40 or rect.height() < 20:
+            return
+
+        faint_pen = QPen(QColor(C["faint"]))
+        font = QFont()
+        font.setPixelSize(10)
+        painter.setFont(font)
+        painter.setPen(faint_pen)
+
+        peak = 1
+        length = 0
+        for _, vals, _ in self._series:
+            peak = max(peak, max((abs(v) for v in vals), default=0))
+            length = max(length, len(vals))
+
+        if length < 2:
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "нет данных парсинга")
+            return
+
+        mid_y = rect.center().y()
+
+        def xy(i: int, value: float) -> QPointF:
+            x = rect.left() + i * rect.width() / (length - 1)
+            y = mid_y - (value / peak) * (rect.height() / 2.0)
+            return QPointF(x, y)
+
+        painter.setPen(QPen(QColor(C["line2"]), 1))
+        painter.drawLine(QPointF(rect.left(), mid_y), QPointF(rect.right(), mid_y))
+        painter.setPen(faint_pen)
+        painter.drawText(
+            QRectF(0, mid_y - 8, 50, 16),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            "0",
+        )
+        painter.drawText(
+            QRectF(0, rect.top() - 6, 50, 16),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            f"+{peak // 1000}k" if peak >= 1000 else f"+{peak}",
+        )
+        painter.drawText(
+            QRectF(0, rect.bottom() - 10, 50, 16),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            f"-{peak // 1000}k" if peak >= 1000 else f"-{peak}",
+        )
+
+        for _label, vals, colour in self._series:
+            pts = [xy(i, float(v)) for i, v in enumerate(vals)]
+            painter.setPen(QPen(QColor(colour), 2))
+            for i in range(len(pts) - 1):
+                painter.drawLine(pts[i], pts[i + 1])
+
+        lx = rect.left() + 6
+        for label, _vals, colour in self._series:
+            painter.setPen(QPen(QColor(colour), 2))
+            painter.drawLine(QPointF(lx, rect.top() + 4), QPointF(lx + 16, rect.top() + 4))
+            painter.setPen(faint_pen)
+            painter.drawText(QPointF(lx + 22, rect.top() + 8), label)
+            lx += 120
+
+
 class NumericItem(QTableWidgetItem):
     """Sorts by numeric value instead of lexicographic text order."""
 

@@ -16,11 +16,19 @@ from PySide6.QtWidgets import (
 
 from ...format import fmt_dur, fmt_int, fmt_mark, game_mode_name, lobby_name
 from ..theme import C
-from ..widgets import ClickableTable, Panel, item_cell, make_table, set_text
+from ..widgets import (
+    AdvantageChart,
+    ClickableTable,
+    Panel,
+    item_cell,
+    make_table,
+    set_text,
+)
 
 
 class MatchPanel(QWidget):
     backRequested = Signal()
+    parseRequested = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -69,7 +77,25 @@ class MatchPanel(QWidget):
         self.meta_line = QLabel("")
         self.meta_line.setProperty("handle", True)
         self.result_panel.add(self.meta_line)
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(10)
+        self.parse_btn = QPushButton("Запросить парсинг")
+        self.parse_btn.setProperty("primary", True)
+        self.parse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.parse_btn.clicked.connect(self._on_parse_clicked)
+        self.parse_note = QLabel("Хронология доступна только для распарсенных матчей.")
+        self.parse_note.setProperty("faint", True)
+        action_row.addWidget(self.parse_btn)
+        action_row.addWidget(self.parse_note)
+        action_row.addStretch(1)
+        self.result_panel.add_layout(action_row)
         content.addWidget(self.result_panel)
+
+        self.adv_panel = Panel("Преимущество", "золото · опыт (Radiant сверху)")
+        self.adv_chart = AdvantageChart()
+        self.adv_panel.add(self.adv_chart)
+        content.addWidget(self.adv_panel)
 
         self.radiant_panel = Panel("Radiant")
         self.radiant_table = self._scoreboard()
@@ -131,8 +157,41 @@ class MatchPanel(QWidget):
         self._fill_draft(data.get("picks_bans") or [])
         self._fill_timeline(data.get("objectives") or [])
 
+        gold = data.get("gold_adv") or []
+        xp = data.get("xp_adv") or []
+        self.adv_chart.set_series(
+            [
+                ("золото", gold, C["gold"]),
+                ("опыт", xp, C["teal"]),
+            ]
+        )
+        self.adv_panel.setVisible(bool(gold or xp))
+
+        if data.get("has_parsed"):
+            self.parse_btn.hide()
+            self.parse_note.setText("Матч распарсен — хронология и график полные.")
+        else:
+            self.parse_btn.show()
+            self.parse_note.setText("Матч не распарсен. Можно запросить парсинг (займёт время).")
+
+        self._match_id = int(data["match_id"])
         self._body.show()
         self.empty.hide()
+
+    def _on_parse_clicked(self) -> None:
+        match_id = getattr(self, "_match_id", 0)
+        if match_id:
+            self.parse_btn.setEnabled(False)
+            self.parse_btn.setText("Запрос отправлен…")
+            self.parseRequested.emit(match_id)
+
+    def show_parse_result(self, ok: bool) -> None:
+        if ok:
+            self.parse_note.setText("Запрос отправлен. Данные появятся позже — нажми Обновить данные.")
+        else:
+            self.parse_note.setText("Не удалось запросить парсинг (нет соединения).")
+            self.parse_btn.setEnabled(True)
+            self.parse_btn.setText("Запросить парсинг")
 
     def _fill_team(self, table: ClickableTable, rows: list[dict[str, Any]]) -> None:
         table.setRowCount(len(rows))

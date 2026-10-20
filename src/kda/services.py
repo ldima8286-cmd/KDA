@@ -74,6 +74,48 @@ class KdaService:
                     row["item_meta"] = [item_info(i) for i in row["items"]]
         return data
 
+    def request_parse(self, match_id: int, game: str = "dota2") -> bool:
+        adapter = self.adapter(game)
+        requester = getattr(adapter, "request_parse", None)
+        return bool(requester(match_id)) if callable(requester) else False
+
+    def hero_detail(self, hero_id: int, game: str = "dota2") -> dict[str, Any]:
+        adapter = self.adapter(game)
+        raw = adapter.hero_detail(hero_id)
+        data = skill_lab.hero_from_raw(raw, self._hero_names(game))
+
+        item_info = getattr(adapter, "item_info", None)
+        if callable(item_info):
+            for phase, ids in data["items"].items():
+                data["items"][phase] = [item_info(i) for i in ids]
+
+        iconer = getattr(adapter, "hero_icon", None)
+        if callable(iconer):
+            for row in data["matchups"]:
+                row["icon"] = iconer(row["hero_id"])
+        return data
+
+    def pro_scene(self, game: str = "dota2") -> dict[str, Any]:
+        adapter = self.adapter(game)
+        matches = [skill_lab.pro_match_from_raw(m) for m in adapter.pro_matches()]
+        teams = sorted(
+            (skill_lab.team_from_raw(t) for t in adapter.teams()),
+            key=lambda t: t["rating"],
+            reverse=True,
+        )
+        players = [skill_lab.pro_player_from_raw(p) for p in adapter.pro_players()]
+        return {"matches": matches, "teams": teams[:100], "players": players}
+
+    def _hero_names(self, game: str) -> dict[int, str]:
+        cached = getattr(self, "_hero_name_cache", None)
+        if cached is None:
+            try:
+                cached = {h.hero_id: h.name for h in self.adapter(game).heroes()}
+            except Exception:  # noqa: BLE001 - lookup is best-effort
+                cached = {}
+            self._hero_name_cache = cached
+        return cached
+
     def meta(self, game: str = "dota2") -> dict[str, Any]:
         return meta_hub.build_meta(self.adapter(game).heroes())
 

@@ -251,3 +251,64 @@ class ServiceOfflineTests(unittest.TestCase):
         )
         self.assertEqual(career["winrate"], 75.0)
         self.assertEqual(career["averages"]["kills"], 2.0)
+
+    def test_hero_from_raw(self):
+        from kda.analytics.skill_lab import hero_from_raw
+
+        data = hero_from_raw(
+            {
+                "hero_id": 1,
+                "name": "Anti-Mage",
+                "matchups": [
+                    {"hero_id": 2, "games_played": 10, "wins": 6},
+                    {"hero_id": 3, "games_played": 4, "wins": 1},
+                ],
+                "durations": [
+                    {"duration_bin": 1800, "games_played": 100, "wins": 55},
+                    {"duration_bin": 600, "games_played": 50, "wins": 20},
+                ],
+                "items": {
+                    "start_game_items": {"63": 100, "29": 5},
+                    "early_game_items": {},
+                    "mid_game_items": {},
+                    "late_game_items": {},
+                },
+            },
+            {1: "Anti-Mage", 2: "Axe"},
+        )
+        self.assertEqual(data["matchups"][0]["hero_id"], 2)
+        self.assertEqual(data["matchups"][0]["name"], "Axe")
+        self.assertEqual(data["matchups"][0]["winrate"], 60.0)
+        self.assertEqual(data["durations"][0]["minute"], 10)
+        self.assertEqual(data["items"]["start_game_items"], [63, 29])
+
+    def test_match_summary_includes_adv(self):
+        from kda.adapters.dota2 import normalize
+        from kda.analytics.skill_lab import match_summary
+
+        detail = normalize.match_from_detail(
+            {
+                "match_id": 5,
+                "start_time": 1,
+                "duration": 100,
+                "radiant_win": True,
+                "radiant_gold_adv": [0, 100, -50],
+                "radiant_xp_adv": [0, 200, 300],
+                "players": [],
+            }
+        )
+        summary = match_summary(detail)
+        self.assertEqual(summary["gold_adv"], [0, 100, -50])
+        self.assertEqual(summary["xp_adv"], [0, 200, 300])
+
+    def test_pro_shapers_pure(self):
+        from kda.analytics.skill_lab import pro_match_from_raw, pro_player_from_raw, team_from_raw
+
+        m = pro_match_from_raw({"match_id": 9, "radiant_name": "A", "dire_name": "B", "radiant_win": True})
+        self.assertEqual(m["radiant_name"], "A")
+        self.assertTrue(m["radiant_win"])
+        t = team_from_raw({"team_id": 1, "name": "T", "wins": 3, "losses": 1, "rating": 1500.4})
+        self.assertEqual(t["winrate"], 75.0)
+        p = pro_player_from_raw({"account_id": 7, "name": "N", "team_name": "T"})
+        self.assertEqual(p["name"], "N")
+        self.assertEqual(p["team_name"], "T")

@@ -120,6 +120,31 @@ class Dota2Adapter(GameAdapter):
         _, icons = self._hero_assets()
         return normalize.match_from_detail(self.client.match(match_id), heroes, icons)
 
+    def request_parse(self, match_id: int) -> bool:
+        return self.client.request_parse(match_id)
+
+    def hero_detail(self, hero_id: int) -> dict[str, Any]:
+        self._hero_map()
+        images, icons = self._hero_assets()
+        return {
+            "hero_id": hero_id,
+            "name": self._heroes.get(hero_id, str(hero_id)) if self._heroes else str(hero_id),
+            "img": images.get(hero_id),
+            "icon": icons.get(hero_id),
+            "matchups": self.client.hero_matchups(hero_id),
+            "durations": self.client.hero_durations(hero_id),
+            "items": self.client.hero_items(hero_id),
+        }
+
+    def pro_matches(self) -> list[dict[str, Any]]:
+        return self.client.pro_matches()
+
+    def pro_players(self) -> list[dict[str, Any]]:
+        return self.client.pro_players()
+
+    def teams(self) -> list[dict[str, Any]]:
+        return self.client.teams()
+
     def heroes(self) -> list[HeroMeta]:
         self._hero_map()
         stats = self.client.hero_stats()

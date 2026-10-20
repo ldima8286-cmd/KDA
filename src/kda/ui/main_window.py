@@ -138,6 +138,7 @@ class MainWindow(QMainWindow):
         self.meta_hub_panel = MetaHubPanel()
         self.match_panel = MatchPanel()
         self.match_panel.backRequested.connect(lambda: self.show_panel("player"))
+        self.match_panel.parseRequested.connect(self._request_parse)
 
         stack = QStackedWidget()
         stack.addWidget(self.home_panel)       # index 0
@@ -253,6 +254,20 @@ class MainWindow(QMainWindow):
     def _on_match(self, data: dict) -> None:
         self.match_panel.set_match(data)
         self.set_status(f"матч {data['match_id']} загружен", "ok")
+
+    def _request_parse(self, match_id: int) -> None:
+        self.set_status(f"запрос парсинга матча {match_id}…", "busy")
+        workers.submit(
+            self.service.request_parse,
+            self._on_parse_done,
+            self._on_error,
+            None,
+            match_id,
+        )
+
+    def _on_parse_done(self, ok: bool) -> None:
+        self.match_panel.show_parse_result(ok)
+        self.set_status("парсинг запрошен" if ok else "парсинг недоступен", "ok" if ok else "err")
 
     # ---------- lifecycle ----------
 
