@@ -412,3 +412,20 @@ class ServiceOfflineTests(unittest.TestCase):
             self.assertEqual(second["matches"][0]["match_id"], 1)
             self.assertTrue(service.offline)
             service.close()
+
+    def test_cs2_adapter_offline_reference(self):
+        from kda.adapters.cs2 import CS2Adapter, premier_rank
+
+        adapter = CS2Adapter()
+        maps = adapter.heroes()
+        self.assertTrue(any(h.name == "Mirage" for h in maps))
+        self.assertEqual(premier_rank(0), "Без ранга")
+        self.assertEqual(premier_rank(21000), "Gold I")
+        self.assertEqual(premier_rank(90000), "Global Elite")
+        adapter.close()
+
+    def test_service_registers_two_games(self):
+        service = KdaService()
+        slugs = {g["slug"] for g in service.games}
+        self.assertEqual(slugs, {"dota2", "cs2"})
+        service.close()

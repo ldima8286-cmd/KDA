@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from .adapters.base import GameAdapter
+from .adapters.cs2 import CS2Adapter
 from .adapters.dota2 import Dota2Adapter
 from .analytics import meta_hub, skill_lab
 from .core.store import SnapshotStore
@@ -19,6 +20,7 @@ class KdaService:
     def __init__(self, ttl: float = _DEFAULT_TTL, store: SnapshotStore | None = None) -> None:
         self._adapters: dict[str, GameAdapter] = {
             Dota2Adapter.slug: Dota2Adapter(ttl=ttl),
+            CS2Adapter.slug: CS2Adapter(ttl=ttl),
         }
         self._store = store if store is not None else self._default_store()
         self._offline = False
