@@ -14,14 +14,24 @@ class Dota2Adapter(GameAdapter):
     def __init__(self, ttl: float = 300.0) -> None:
         self.client = OpenDotaClient(ttl=ttl)
         self._heroes: dict[int, str] | None = None
+        self._images: dict[int, str] | None = None
 
-    async def _hero_map(self) -> dict[int, str]:
+    def _hero_map(self) -> dict[int, str]:
         if self._heroes is None:
-            self._heroes = normalize.hero_index(await self.client.heroes())
+            self._heroes = normalize.hero_index(self.client.heroes())
         return self._heroes
 
-    async def search(self, query: str) -> list[Player]:
-        raw = await self.client.search(query)
+    def hero_image(self, hero_id: int) -> str | None:
+        if self._images is None:
+            self._images = {
+                int(row.get("id") or 0): url
+                for row in self.client.hero_stats()
+                if (url := normalize.img_url(row.get("img")))
+            }
+        return self._images.get(hero_id)
+
+    def search(self, query: str) -> list[Player]:
+        raw = self.client.search(query)
         return [
             Player(
                 game=self.slug,
@@ -33,21 +43,21 @@ class Dota2Adapter(GameAdapter):
             if item.get("account_id")
         ]
 
-    async def player(self, account_id: int) -> Player:
-        return normalize.player_from_raw(account_id, await self.client.player(account_id))
+    def player(self, account_id: int) -> Player:
+        return normalize.player_from_raw(account_id, self.client.player(account_id))
 
-    async def recent_matches(self, account_id: int, limit: int = 20) -> list[Match]:
-        await self._hero_map()
-        raw = await self.client.recent_matches(account_id)
+    def recent_matches(self, account_id: int, limit: int = 20) -> list[Match]:
+        self._hero_map()
+        raw = self.client.recent_matches(account_id)
         return [
             normalize.match_from_recent(account_id, row, normalize.hero_index_name(self._heroes, row))
             for row in raw[:limit]
         ]
 
-    async def heroes(self) -> list[HeroMeta]:
-        heroes = await self._hero_map()
-        stats = await self.client.hero_stats()
-        return normalize.meta_from_stats(stats, heroes)
+    def heroes(self) -> list[HeroMeta]:
+        self._hero_map()
+        stats = self.client.hero_stats()
+        return normalize.meta_from_stats(stats, self._heroes)
 
-    async def aclose(self) -> None:
-        await self.client.aclose()
+    def close(self) -> None:
+        self.client.close()

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch KDA (Qt shell + local API + web UI).
+# Launch KDA (native Qt desktop app).
 set -e
 cd "$(dirname "$0")"
 

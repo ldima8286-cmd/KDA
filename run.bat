@@ -1,5 +1,5 @@
 @echo off
-REM Launch KDA (Qt shell + local API + web UI) on Windows.
+REM Launch KDA (native Qt desktop app) on Windows.
 setlocal
 cd /d "%~dp0"
 

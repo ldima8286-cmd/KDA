@@ -1,11 +1,12 @@
-"""Thin async client for the public OpenDota API (Dota 2).
+"""Thin synchronous client for the public OpenDota API (Dota 2).
 
 No API key is required for the endpoints used here. Responses are cached with a
-short TTL so the UI can poll freely without hammering the service.
+short TTL so relaunching the app (or switching panels) is instant; a fresh
+launch clears the cache and pulls current data when online.
 """
 from __future__ import annotations
 
-import asyncio
+import time
 from typing import Any
 
 import httpx
@@ -23,69 +24,61 @@ class OpenDotaClient:
     def __init__(self, base: str = BASE, ttl: float = 300.0) -> None:
         self.base = base.rstrip("/")
         self.cache = TTLCache(ttl)
-        self._client: httpx.AsyncClient | None = None
+        self._client = httpx.Client(
+            base_url=self.base,
+            timeout=httpx.Timeout(30.0),
+            headers={"User-Agent": "KDA/0.1 (+https://github.com)"},
+        )
 
-    async def _http(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=self.base,
-                timeout=httpx.Timeout(30.0),
-                headers={"User-Agent": "KDA/0.1 (+https://github.com)"},
-            )
-        return self._client
+    def close(self) -> None:
+        self._client.close()
 
-    async def aclose(self) -> None:
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
-
-    async def _get(self, path: str, **params: Any) -> Any:
+    def _get(self, path: str, **params: Any) -> Any:
         key = path + "?" + "&".join(f"{k}={v}" for k, v in sorted(params.items()))
         cached = self.cache.get(key)
         if cached is not None:
             return cached
 
-        client = await self._http()
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                resp = await client.get(path, params=params)
+                resp = self._client.get(path, params=params)
                 if resp.status_code == 429:
-                    await asyncio.sleep(1.0 + attempt)
+                    time.sleep(1.0 + attempt)
                     continue
                 resp.raise_for_status()
                 data = resp.json()
                 self.cache.set(key, data)
                 return data
-            except Exception as exc:  # noqa: BLE001
+            except httpx.HTTPError as exc:
                 last_exc = exc
-                await asyncio.sleep(0.5 * (attempt + 1))
+                time.sleep(0.5 * (attempt + 1))
         raise OpenDotaError(f"GET {path} failed: {last_exc}")
 
     # --- high level ---
 
-    async def search(self, query: str) -> list[dict[str, Any]]:
+    def search(self, query: str) -> list[dict[str, Any]]:
         if not query.strip():
             return []
-        data = await self._get("/search", q=query.strip())
+        data = self._get("/search", q=query.strip())
         return data if isinstance(data, list) else []
 
-    async def player(self, account_id: int) -> dict[str, Any]:
-        return await self._get(f"/players/{account_id}")
+    def player(self, account_id: int) -> dict[str, Any]:
+        return self._get(f"/players/{account_id}")
 
-    async def matches(self, account_id: int, limit: int = 20) -> list[dict[str, Any]]:
-        data = await self._get(f"/players/{account_id}/matches", limit=limit)
+    def matches(self, account_id: int, limit: int = 20) -> list[dict[str, Any]]:
+        data = self._get(f"/players/{account_id}/matches", limit=limit)
         return data if isinstance(data, list) else []
 
-    async def recent_matches(self, account_id: int) -> list[dict[str, Any]]:
+    def recent_matches(self, account_id: int) -> list[dict[str, Any]]:
         # Rich last-20 feed: includes gold_per_min / xp_per_min / last_hits.
-        data = await self._get(f"/players/{account_id}/recentMatches")
+        data = self._get(f"/players/{account_id}/recentMatches")
         return data if isinstance(data, list) else []
 
-    async def heroes(self) -> list[dict[str, Any]]:
-        data = await self._get("/heroes")
+    def heroes(self) -> list[dict[str, Any]]:
+        data = self._get("/heroes")
         return data if isinstance(data, list) else []
 
-    async def hero_stats(self) -> list[dict[str, Any]]:
-        data = await self._get("/heroStats")
+    def hero_stats(self) -> list[dict[str, Any]]:
+        data = self._get("/heroStats")
         return data if isinstance(data, list) else []

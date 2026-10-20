@@ -1,30 +1,31 @@
 # KDA — esports intelligence
 
-A local, self-contained esports analytics workstation. One dark, data-dense
-interface over multiple games, starting with **Dota 2** (powered by the public
-[OpenDota](https://docs.opendota.com/) API — no key required).
+A native desktop analytics workstation for competitive games, starting with
+**Dota 2** (public [OpenDota](https://docs.opendota.com/) API — no key required).
 
-> The app runs entirely on your machine: a small FastAPI server + a hand-built
-> web UI, wrapped in a Qt shell. No accounts, no telemetry, no cloud.
+One dark, data-dense interface: a Qt shell over a small Python engine. No web
+server, no browser, no accounts — the app talks to the API directly and pulls
+fresh data on every launch when you are online.
 
 ## Highlights
 
-- **Skill Lab** — search any player by name or Steam `account_id` and get a
-  full dossier: win rate, KDA, GPM/XPM, hero pool, a win-rate trend chart and
-  the latest matches.
-- **Meta Hub** — current hero meta with pro and pub pick/win rates, filterable
-  and sortable.
+- **Skill Lab** — search any player by nickname or Steam `account_id` and get a
+  full dossier: win rate, KDA, GPM/XPM, hero pool with thumbnails, a rolling
+  win-rate trend chart and the latest matches.
+- **Meta Hub** — current hero meta with pro and pub pick/win rates; sortable
+  columns and a Pro / public-rankings toggle.
 - **Universal Engine** — a game-agnostic core (`Player` / `Match` / `HeroMeta`
   models + `GameAdapter` interface). Dota 2 is the first adapter; more games
-  plug into the same UI without touching it.
-- **Offline-friendly** — every upstream response is cached with a short TTL, so
-  navigation is instant and the app keeps working through brief network blips.
+  plug in without touching the UI.
+- **Fresh on launch, polite offline** — a short TTL cache keeps navigation
+  instant; every launch starts cold and pulls current data, and the refresh
+  button forces a re-pull. Networking runs off the UI thread, so the window
+  never freezes.
 
 ## Screens
 
-The UI follows a dark, dense esports aesthetic (Dota 2 client + HLTV tables +
-Linear/Vercel surfaces). All charts are hand-rolled SVG — no external CDNs, no
-font downloads.
+The UI is a dark esports aesthetic (Dota 2 client + HLTV analytics tables).
+The win-rate trend chart is hand-drawn with QPainter — no charting dependency.
 
 ## Quick start
 
@@ -38,10 +39,9 @@ run.bat           # Windows
 ```
 
 `run.sh` / `run.bat` create a virtual environment, install dependencies and
-launch the app. The Qt shell opens a native window with the UI embedded; if
-`QtWebEngine` is unavailable it falls back to opening your default browser.
+launch the app.
 
-### Manual / headless
+### Manual
 
 ```bash
 python -m venv .venv
@@ -49,25 +49,10 @@ python -m venv .venv
 PYTHONPATH=src .venv/bin/python -m kda
 ```
 
-Server-only (useful on a headless box; open the printed URL from another
-machine after port-forwarding):
-
-```bash
-PYTHONPATH=src .venv/bin/python -m uvicorn kda.server.app:app --host 127.0.0.1 --port 8000
-```
-
-If `QtWebEngine` fails to import on Linux, install your distro's Kerberos
-runtime (`libkrb5`, e.g. `krb5-libs` / `libgssapi-krb5-2`).
-
-## HTTP API
-
-| Endpoint | Description |
-| --- | --- |
-| `GET /api/health` | Liveness + available games |
-| `GET /api/games` | Registered game adapters |
-| `GET /api/search?game=dota2&q=<name\|id>` | Player search |
-| `GET /api/players/{account_id}?game=dota2&limit=20` | Full Skill Lab profile |
-| `GET /api/meta?game=dota2` | Meta Hub hero stats |
+> **Linux note:** hero thumbnails and avatars load through `QtNetwork`, which
+> links against Kerberos on some distros. If icons do not appear, install your
+> runtime (`krb5-libs` / `libgssapi-krb5-2`). The app still runs without it,
+> just without images.
 
 ## Architecture
 
@@ -76,23 +61,32 @@ src/kda/
   core/            models.py (unified entities) · cache.py (TTL cache)
   adapters/
     base.py        GameAdapter interface
-    dota2/         opendota.py (HTTP client) · normalize.py · __init__.py
+    dota2/         opendota.py (sync HTTP client) · normalize.py
   analytics/       skill_lab.py · meta_hub.py   (game-agnostic analysis)
-  server/          app.py (FastAPI factory) · routes.py
-  web/             index.html · style.css · app.js
-  app.py           Qt shell (server thread + QWebEngineView)
+  services.py      KdaService — facade the UI talks to
+  ui/
+    theme.py       dark palette as a Qt stylesheet
+    workers.py     run blocking calls off the UI thread
+    images.py      async thumbnail loader with pixmap cache
+    widgets.py     panels, stat cards, tables, trend chart
+    panels/        home.py · skill_lab.py · meta_hub.py
+    main_window.py nav rail + player search + panel stack
+  app.py           QApplication bootstrap
 ```
 
-The engine is deliberately split: **adapters** fetch and normalise game data
-into the shared model, **analytics** compute insights from the model, and the
-**UI** never talks to a game API directly. That keeps every future game a
-matter of writing one adapter.
+Adapters fetch and normalise game data into the shared model, analytics compute
+insights from the model, and the UI never talks to a game API directly. Adding
+a title means writing one adapter.
 
 ## Tests
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
 ```
+
+Covers the normalisation pipeline, analytics aggregates, formatters, the
+sync OpenDota client (offline via `httpx.MockTransport`) and the service
+facade.
 
 ## Roadmap
 

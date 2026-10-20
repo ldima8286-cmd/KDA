@@ -62,6 +62,16 @@ def hero_index_name(heroes: dict[int, str] | None, row: dict[str, Any]) -> str:
     return heroes.get(int(row.get("hero_id") or 0), "")
 
 
+def img_url(raw_img: str | None) -> str | None:
+    """OpenDota returns Steam CDN paths; make them absolute."""
+    if not raw_img:
+        return None
+    text = str(raw_img)
+    if text.startswith("http"):
+        return text
+    return "https://cdn.cloudflare.steamstatic.com" + text
+
+
 def meta_from_stats(
     stats_raw: list[dict[str, Any]],
     heroes: dict[int, str] | None = None,
@@ -70,9 +80,6 @@ def meta_from_stats(
     out: list[HeroMeta] = []
     for row in stats_raw:
         hero_id = int(row.get("id") or 0)
-        img = row.get("img")
-        if img and not str(img).startswith("http"):
-            img = "https://cdn.cloudflare.steamstatic.com" + str(img)
         out.append(
             HeroMeta(
                 game="dota2",
@@ -83,7 +90,7 @@ def meta_from_stats(
                 pro_win=int(row.get("pro_win") or 0),
                 pub_pick=int(row.get("pub_pick") or 0),
                 pub_win=int(row.get("pub_win") or 0),
-                img=img,
+                img=img_url(row.get("img")),
             )
         )
     return out
