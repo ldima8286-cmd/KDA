@@ -138,3 +138,35 @@ class OpenDotaClient:
 
     def constants(self, name: str) -> Any:
         return self._get(f"/constants/{name}")
+
+    def sql(self, query: str) -> list[dict[str, Any]]:
+        """Run an SQL query through the public /explorer endpoint."""
+        key = "explorer:" + query
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                resp = self._client.get("/explorer", params={"sql": query})
+                if resp.status_code == 429:
+                    time.sleep(1.5 + attempt * 2)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                rows = data.get("rows") or []
+                self.cache.set(key, rows, ttl=1800.0)
+                return rows
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                time.sleep(1.0 * (attempt + 1))
+        raise OpenDotaError(f"explorer query failed: {last_exc}")
+
+    def hero_skill_build(self, hero_id: int, sample: int = 4000) -> list[dict[str, Any]]:
+        """Raw ability-upgrade arrays for a hero, from parsed games."""
+        query = (
+            "SELECT ability_upgrades_arr FROM player_matches "
+            f"WHERE hero_id = {int(hero_id)} AND ability_upgrades_arr IS NOT NULL "
+            f"LIMIT {int(sample)}"
+        )
+        return self.sql(query)

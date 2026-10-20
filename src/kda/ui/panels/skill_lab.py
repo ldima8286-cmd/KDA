@@ -196,7 +196,7 @@ class SkillLabPanel(QWidget):
         heroes = (profile.get("heroes") or [])[:12]
         self.heroes_table.setRowCount(len(heroes))
         for row, hero in enumerate(heroes):
-            self.heroes_table.setCellWidget(row, 0, hero_cell(hero.get("icon"), hero["name"]))
+            self.heroes_table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
             set_text(self.heroes_table, row, 1, hero["matches"], mono=True, right=True)
             set_text(self.heroes_table, row, 2, f"{hero['winrate']}%", mono=True, right=True)
             set_text(self.heroes_table, row, 3, hero["avg_kda"], mono=True, right=True)
@@ -207,7 +207,7 @@ class SkillLabPanel(QWidget):
         self._recent_ids = [int(m["match_id"]) for m in recent]
         self.recent_table.setRowCount(len(recent))
         for row, match in enumerate(recent):
-            self.recent_table.setCellWidget(row, 0, hero_cell(match.get("icon"), match["hero_name"]))
+            self.recent_table.setCellWidget(row, 0, hero_cell(match.get("img"), match["hero_name"]))
             set_text(
                 self.recent_table,
                 row,

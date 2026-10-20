@@ -42,6 +42,11 @@ HERO_STATS = [
         "pro_win": 6,
         "pub_pick": 100,
         "pub_win": 55,
+        "1_pick": 10, "1_win": 6,
+        "2_pick": 20, "2_win": 10,
+        "3_pick": 10, "3_win": 5,
+        "4_pick": 5, "4_win": 2,
+        "5_pick": 5, "5_win": 3,
     }
 ]
 
@@ -97,6 +102,26 @@ CAREER = {
     "/players/42/heroes": [
         {"hero_id": 1, "games": 10, "win": 7, "last_played": 1_700_000_000},
     ],
+}
+
+
+BUILD_ORDER = {
+    "rows": [
+        {"ability_upgrades_arr": [5003, 5004, 5003, 5004, 5005, 5003, 5004, 5005, 5005, 6012]},
+        {"ability_upgrades_arr": [5003, 5004, 5003, 5004, 5005, 5003, 5004, 5005, 5005, 6353]},
+    ]
+}
+
+ABILITY_IDS = {"5003": "antimage_mana_break", "5004": "antimage_blink",
+               "5005": "antimage_mana_void", "6012": "special_bonus_unique_antimage",
+               "6353": "special_bonus_unique_antimage_2"}
+
+ABILITY_CONST = {
+    "antimage_mana_break": {"dname": "Mana Break", "img": "/apps/570/a/mb.png"},
+    "antimage_blink": {"dname": "Blink", "img": "/apps/570/a/bl.png"},
+    "antimage_mana_void": {"dname": "Mana Void", "img": "/apps/570/a/mv.png"},
+    "special_bonus_unique_antimage": {"dname": "+20 Agility", "img": None},
+    "special_bonus_unique_antimage_2": {"dname": "+10 Strength", "img": None},
 }
 
 
@@ -191,6 +216,43 @@ class AdapterOfflineTests(unittest.TestCase):
         info = adapter.item_info(63)
         self.assertEqual(info["name"], "Power Treads")
         self.assertTrue(info["img"].startswith("https://"))
+
+    def test_hero_build_and_positions(self):
+        adapter = self._adapter(
+            {
+                "/explorer": BUILD_ORDER,
+                "/constants/ability_ids": ABILITY_IDS,
+                "/constants/abilities": ABILITY_CONST,
+                "/heroStats": HERO_STATS,
+            }
+        )
+        build = adapter.hero_build(1)
+        self.assertEqual(build["games"], 2)
+        self.assertEqual(build["order"][0]["name"], "Mana Break")
+        self.assertEqual(build["order"][0]["ability_id"], 5003)
+        self.assertTrue(build["order"][0]["img"].startswith("https://"))
+        tiers = {t["tier"] for t in build["talents"]}
+        self.assertIn(10, tiers)
+
+        positions = adapter.hero_positions(1)
+        self.assertEqual(positions["total"], 50)
+        self.assertGreater(positions["core_share"], positions["support_share"])
+        self.assertEqual(len(positions["positions"]), 5)
+
+    def test_hero_build_from_raw_pure(self):
+        from kda.analytics.skill_lab import hero_build_from_raw
+
+        names = {5003: "antimage_mana_break", 5004: "antimage_blink", 6012: "special_bonus_unique_antimage"}
+        meta = {5003: {"dname": "Mana Break", "img": "x"}}
+        arr = [5003, 5004, 5003, 5004, 5005, 5003, 5004, 5005, 5005, 6012]
+        rows = [{"ability_upgrades_arr": arr}]
+        out = hero_build_from_raw(rows, names, meta)
+        self.assertEqual(out["games"], 1)
+        self.assertEqual(out["order"][0]["name"], "Mana Break")
+        self.assertEqual(out["order"][1]["name"], "Blink")
+        self.assertEqual(out["order"][2]["name"], "Mana Break")
+        self.assertEqual(out["talents"][0]["tier"], 10)
+        self.assertEqual(out["talents"][0]["options"][0]["name"], "Talent: Antimage")
 
 
 class ServiceOfflineTests(unittest.TestCase):

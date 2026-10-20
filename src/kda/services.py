@@ -48,11 +48,17 @@ class KdaService:
         matches = adapter.recent_matches(account_id, limit=limit)
         data = skill_lab.build_profile(player, matches)
 
+        hero_image = getattr(adapter, "hero_image", None)
         hero_icon = getattr(adapter, "hero_icon", None)
-        if callable(hero_icon):
-            for row in data.get("heroes", []):
+        for row in data.get("heroes", []):
+            if callable(hero_image):
+                row["img"] = hero_image(row["hero_id"])
+            if callable(hero_icon):
                 row["icon"] = hero_icon(row["hero_id"])
-            for row in data.get("recent", []):
+        for row in data.get("recent", []):
+            if callable(hero_image):
+                row["img"] = hero_image(row["hero_id"])
+            if callable(hero_icon):
                 row["icon"] = hero_icon(row["hero_id"])
         return data
 
@@ -109,6 +115,24 @@ class KdaService:
         if callable(iconer):
             for row in data["matchups"]:
                 row["icon"] = iconer(row["hero_id"])
+
+        builder = getattr(adapter, "hero_build", None)
+        if callable(builder):
+            try:
+                data["build"] = builder(hero_id)
+            except Exception:  # noqa: BLE001 - build is optional
+                data["build"] = None
+        else:
+            data["build"] = None
+
+        positioner = getattr(adapter, "hero_positions", None)
+        if callable(positioner):
+            try:
+                data["positions"] = positioner(hero_id)
+            except Exception:  # noqa: BLE001 - positions are optional
+                data["positions"] = None
+        else:
+            data["positions"] = None
         return data
 
     def pro_scene(self, game: str = "dota2") -> dict[str, Any]:

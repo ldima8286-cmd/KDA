@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...analytics import skill_lab
 from ...core.models import HeroMeta, Match, MatchDetail, Player
 from ..base import GameAdapter
 from . import normalize
@@ -20,6 +21,8 @@ class Dota2Adapter(GameAdapter):
         self._icons: dict[int, str] | None = None
         self._items: dict[int, dict[str, str]] | None = None
         self._meta_constants: dict[str, dict[str, str]] = {}
+        self._ability_names: dict[int, str] | None = None
+        self._ability_meta: dict[int, dict[str, Any]] | None = None
 
     # --- lookups ---
 
@@ -136,9 +139,64 @@ class Dota2Adapter(GameAdapter):
             "items": self.client.hero_items(hero_id),
         }
 
+    def _ability_tables(self) -> tuple[dict[int, str], dict[int, dict[str, Any]]]:
+        if self._ability_names is None or self._ability_meta is None:
+            names: dict[int, str] = {}
+            for key, value in (self.client.constants("ability_ids") or {}).items():
+                try:
+                    names[int(key)] = str(value)
+                except (TypeError, ValueError):
+                    continue
+            by_name = {name: aid for aid, name in names.items()}
+            meta: dict[int, dict[str, Any]] = {}
+            for key, row in (self.client.constants("abilities") or {}).items():
+                if not isinstance(row, dict):
+                    continue
+                ability_id = by_name.get(key)
+                if ability_id is None:
+                    continue
+                meta[ability_id] = {
+                    "dname": row.get("dname") or key,
+                    "img": normalize.img_url(row.get("img")),
+                }
+            self._ability_names, self._ability_meta = names, meta
+        return self._ability_names, self._ability_meta
+
+    def hero_build(self, hero_id: int) -> dict[str, Any]:
+        names, meta = self._ability_tables()
+        return skill_lab.hero_build_from_raw(self.client.hero_skill_build(hero_id), names, meta)
+
+    def hero_positions(self, hero_id: int) -> dict[str, Any]:
+        """Pick share per lane position (1=carry ... 5=hard support)."""
+        for row in self.client.hero_stats():
+            if int(row.get("id") or 0) != int(hero_id):
+                continue
+            picks = [int(row.get(f"{p}_pick") or 0) for p in range(1, 6)]
+            wins = [int(row.get(f"{p}_win") or 0) for p in range(1, 6)]
+            total = sum(picks)
+            positions = []
+            for i, pos in enumerate(range(1, 6)):
+                positions.append(
+                    {
+                        "position": pos,
+                        "picks": picks[i],
+                        "wins": wins[i],
+                        "share": round(100.0 * picks[i] / total, 1) if total else 0.0,
+                        "winrate": round(100.0 * wins[i] / picks[i], 1) if picks[i] else 0.0,
+                    }
+                )
+            core = sum(picks[:3])
+            support = sum(picks[3:])
+            return {
+                "total": total,
+                "positions": positions,
+                "core_share": round(100.0 * core / total, 1) if total else 0.0,
+                "support_share": round(100.0 * support / total, 1) if total else 0.0,
+            }
+        return {"total": 0, "positions": [], "core_share": 0.0, "support_share": 0.0}
+
     def pro_matches(self) -> list[dict[str, Any]]:
         return self.client.pro_matches()
-
     def pro_players(self) -> list[dict[str, Any]]:
         return self.client.pro_players()
 

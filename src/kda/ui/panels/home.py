@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..theme import C
-from ..widgets import HeroIcon, Panel, StatCard, hero_cell, make_table, set_text
+from ..widgets import HeroIcon, Panel, StatCard, hero_cell, make_table, row_id, set_row_id, set_text
 
 
 class _HeroCard(QWidget):
@@ -65,6 +65,8 @@ class _HeroCard(QWidget):
 
 
 class HomePanel(QWidget):
+    heroRequested = Signal(int)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         outer = QVBoxLayout(self)
@@ -107,13 +109,15 @@ class HomePanel(QWidget):
         split = QHBoxLayout()
         split.setSpacing(14)
 
-        self.pubs = Panel("Топ по пабам", "доля пиков")
-        self._pub_table = make_table(["Герой", "Pick share", "Побед"], numeric={1, 2})
+        self.pubs = Panel("Топ по пабам", "клик — открыть героя")
+        self._pub_table = make_table(["Герой", "Pick share", "Побед"], numeric={1, 2}, clickable=True)
+        self._pub_table.rowClicked.connect(self._on_pub_clicked)
         self.pubs.add(self._pub_table)
         split.addWidget(self.pubs, 3)
 
-        self.wr_panel = Panel("Самые побеждающие (пабы)")
-        self._wr_table = make_table(["Герой", "WR", "Игр"], numeric={1, 2})
+        self.wr_panel = Panel("Самые побеждающие (пабы)", "клик — открыть героя")
+        self._wr_table = make_table(["Герой", "WR", "Игр"], numeric={1, 2}, clickable=True)
+        self._wr_table.rowClicked.connect(self._on_wr_clicked)
         self.wr_panel.add(self._wr_table)
         split.addWidget(self.wr_panel, 2)
 
@@ -160,7 +164,8 @@ class HomePanel(QWidget):
         top_pub = sorted(pubs, key=lambda h: h.get("pub_pick") or 0, reverse=True)[:10]
         self._pub_table.setRowCount(len(top_pub))
         for row, hero in enumerate(top_pub):
-            self._pub_table.setCellWidget(row, 0, hero_cell(hero.get("icon"), hero["name"]))
+            set_row_id(self._pub_table, row, int(hero["hero_id"]))
+            self._pub_table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
             set_text(self._pub_table, row, 1, f"{hero['pub_pick_share']}%", mono=True, right=True)
             set_text(
                 self._pub_table,
@@ -175,7 +180,8 @@ class HomePanel(QWidget):
         best_wr = sorted(pubs, key=lambda h: h["pub_winrate"], reverse=True)[:10]
         self._wr_table.setRowCount(len(best_wr))
         for row, hero in enumerate(best_wr):
-            self._wr_table.setCellWidget(row, 0, hero_cell(hero.get("icon"), hero["name"]))
+            set_row_id(self._wr_table, row, int(hero["hero_id"]))
+            self._wr_table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
             set_text(
                 self._wr_table,
                 row,
@@ -186,3 +192,13 @@ class HomePanel(QWidget):
                 color=C["win"],
             )
             set_text(self._wr_table, row, 2, f"{hero['pub_pick']}", mono=True, right=True)
+
+    def _on_pub_clicked(self, row: int) -> None:
+        hero_id = row_id(self._pub_table, row)
+        if hero_id is not None:
+            self.heroRequested.emit(hero_id)
+
+    def _on_wr_clicked(self, row: int) -> None:
+        hero_id = row_id(self._wr_table, row)
+        if hero_id is not None:
+            self.heroRequested.emit(hero_id)

@@ -20,6 +20,7 @@ from ..widgets import Panel, make_table, set_text
 
 class ProPanel(QWidget):
     matchRequested = Signal(int)
+    playerRequested = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -57,8 +58,9 @@ class ProPanel(QWidget):
         teams_panel.add(self.teams_table)
         split.addWidget(teams_panel, 1)
 
-        players_panel = Panel("Про-игроки", "первые 100")
-        self.players_table = make_table(["Игрок", "Команда", "Страна"], numeric=set())
+        players_panel = Panel("Про-игроки", "клик — открыть профиль")
+        self.players_table = make_table(["Игрок", "Команда", "Страна"], numeric=set(), clickable=True)
+        self.players_table.rowClicked.connect(self._on_player_clicked)
         players_panel.add(self.players_table)
         split.addWidget(players_panel, 1)
 
@@ -68,6 +70,7 @@ class ProPanel(QWidget):
         outer.addWidget(scroll, 1)
 
         self._match_ids: list[int] = []
+        self._player_ids: list[int] = []
 
     def set_scene(self, data: dict[str, Any]) -> None:
         matches = data.get("matches") or []
@@ -105,6 +108,7 @@ class ProPanel(QWidget):
             set_text(self.teams_table, row, 3, f"{t['winrate']}%", mono=True, right=True)
 
         players = (data.get("players") or [])[:100]
+        self._player_ids = [int(p["account_id"]) for p in players]
         self.players_table.setRowCount(len(players))
         for row, p in enumerate(players):
             set_text(self.players_table, row, 0, p["name"])
@@ -115,3 +119,9 @@ class ProPanel(QWidget):
     def _on_match_clicked(self, row: int) -> None:
         if 0 <= row < len(self._match_ids):
             self.matchRequested.emit(self._match_ids[row])
+
+    def _on_player_clicked(self, row: int) -> None:
+        if 0 <= row < len(self._player_ids):
+            account_id = self._player_ids[row]
+            if account_id:
+                self.playerRequested.emit(account_id)
