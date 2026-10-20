@@ -43,17 +43,49 @@ class KdaService:
         matches = adapter.recent_matches(account_id, limit=limit)
         data = skill_lab.build_profile(player, matches)
 
-        # Enrich with hero thumbnails when the adapter can provide them.
-        image = getattr(adapter, "hero_image", None)
-        if callable(image):
+        hero_icon = getattr(adapter, "hero_icon", None)
+        if callable(hero_icon):
             for row in data.get("heroes", []):
-                row["img"] = image(row["hero_id"])
+                row["icon"] = hero_icon(row["hero_id"])
             for row in data.get("recent", []):
-                row["img"] = image(row["hero_id"])
+                row["icon"] = hero_icon(row["hero_id"])
+        return data
+
+    def career(self, account_id: int, game: str = "dota2") -> dict[str, Any]:
+        adapter = self.adapter(game)
+        raw = adapter.career_stats(account_id)
+        images: dict[int, str] = {}
+        hero_icon = getattr(adapter, "hero_icon", None)
+        if callable(hero_icon):
+            for row in raw.get("heroes", []):
+                hero_id = int(row.get("hero_id") or 0)
+                images[hero_id] = hero_icon(hero_id)
+        return skill_lab.career_from_stats(raw, raw.get("heroes"), images)
+
+    def match(self, match_id: int, game: str = "dota2") -> dict[str, Any]:
+        adapter = self.adapter(game)
+        detail = adapter.match_detail(match_id)
+        data = skill_lab.match_summary(detail)
+
+        item_info = getattr(adapter, "item_info", None)
+        if callable(item_info):
+            for side in ("radiant", "dire"):
+                for row in data[side]:
+                    row["item_meta"] = [item_info(i) for i in row["items"]]
         return data
 
     def meta(self, game: str = "dota2") -> dict[str, Any]:
         return meta_hub.build_meta(self.adapter(game).heroes())
+
+    def game_modes(self, game: str = "dota2") -> dict[int, str]:
+        adapter = self.adapter(game)
+        mapper = getattr(adapter, "constants_map", None)
+        return mapper("game_mode") if callable(mapper) else {}
+
+    def regions(self, game: str = "dota2") -> dict[int, str]:
+        adapter = self.adapter(game)
+        mapper = getattr(adapter, "constants_map", None)
+        return mapper("region") if callable(mapper) else {}
 
     # --- lifecycle ---
 

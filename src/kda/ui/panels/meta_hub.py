@@ -68,8 +68,7 @@ class MetaHubPanel(QWidget):
 
         for row, hero in enumerate(rows):
             # numeric cells keep plain values so NumericItem sorts correctly
-            set_text(self._table, row, 0, hero["name"])
-            self._table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
+            self._table.setCellWidget(row, 0, hero_cell(hero.get("icon"), hero["name"]))
             set_text(self._table, row, 1, hero["pro_pick"], mono=True, right=True, numeric=True)
             set_text(self._table, row, 2, hero["pro_winrate"], mono=True, right=True, numeric=True)
             set_text(self._table, row, 3, hero["pub_pick"], mono=True, right=True, numeric=True)

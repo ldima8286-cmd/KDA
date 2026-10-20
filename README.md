@@ -10,8 +10,13 @@ fresh data on every launch when you are online.
 ## Highlights
 
 - **Skill Lab** — search any player by nickname or Steam `account_id` and get a
-  full dossier: win rate, KDA, GPM/XPM, hero pool with thumbnails, a rolling
-  win-rate trend chart and the latest matches.
+  full dossier: rank medal, win rate, KDA, GPM/XPM, a rolling win-rate trend
+  chart, the latest matches, **career totals** (games, winrate, averages) and
+  **popular heroes** across the whole account history.
+- **Match viewer** — click any recent game to open the full picture: ten-player
+  scoreboard (net worth, hero damage, items), the draft (picks/bans) and, for
+  parsed matches, an event timeline of the whole game (first blood, towers,
+  Roshan, aegis, courier kills).
 - **Meta Hub** — current hero meta with pro and pub pick/win rates; sortable
   columns and a Pro / public-rankings toggle.
 - **Universal Engine** — a game-agnostic core (`Player` / `Match` / `HeroMeta`
@@ -98,7 +103,7 @@ src/kda/
     workers.py     run blocking calls off the UI thread
     images.py      async thumbnail loader with pixmap cache
     widgets.py     panels, stat cards, tables, trend chart
-    panels/        home.py · skill_lab.py · meta_hub.py
+    panels/        home.py · skill_lab.py · match.py · meta_hub.py
     main_window.py nav rail + player search + panel stack
   app.py           QApplication bootstrap
 ```

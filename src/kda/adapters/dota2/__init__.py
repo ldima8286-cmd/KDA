@@ -1,7 +1,9 @@
 """Dota 2 adapter backed by the public OpenDota API."""
 from __future__ import annotations
 
-from ...core.models import HeroMeta, Match, Player
+from typing import Any
+
+from ...core.models import HeroMeta, Match, MatchDetail, Player
 from ..base import GameAdapter
 from . import normalize
 from .opendota import OpenDotaClient
@@ -15,20 +17,72 @@ class Dota2Adapter(GameAdapter):
         self.client = OpenDotaClient(ttl=ttl)
         self._heroes: dict[int, str] | None = None
         self._images: dict[int, str] | None = None
+        self._icons: dict[int, str] | None = None
+        self._items: dict[int, dict[str, str]] | None = None
+        self._meta_constants: dict[str, dict[str, str]] = {}
+
+    # --- lookups ---
 
     def _hero_map(self) -> dict[int, str]:
         if self._heroes is None:
             self._heroes = normalize.hero_index(self.client.heroes())
         return self._heroes
 
+    def _hero_assets(self) -> tuple[dict[int, str], dict[int, str]]:
+        if self._images is None or self._icons is None:
+            images: dict[int, str] = {}
+            icons: dict[int, str] = {}
+            for row in self.client.hero_stats():
+                hero_id = int(row.get("id") or 0)
+                if url := normalize.img_url(row.get("img")):
+                    images[hero_id] = url
+                if url := normalize.img_url(row.get("icon")):
+                    icons[hero_id] = url
+            self._images, self._icons = images, icons
+        return self._images, self._icons
+
     def hero_image(self, hero_id: int) -> str | None:
-        if self._images is None:
-            self._images = {
-                int(row.get("id") or 0): url
-                for row in self.client.hero_stats()
-                if (url := normalize.img_url(row.get("img")))
-            }
-        return self._images.get(hero_id)
+        return self._hero_assets()[0].get(hero_id)
+
+    def hero_icon(self, hero_id: int) -> str | None:
+        return self._hero_assets()[1].get(hero_id)
+
+    def item_info(self, item_id: int) -> dict[str, str]:
+        if self._items is None:
+            table: dict[int, dict[str, str]] = {}
+            for key, row in (self.client.constants("items") or {}).items():
+                if not isinstance(row, dict):
+                    continue
+                table[int(row.get("id") or 0)] = {
+                    "name": row.get("dname") or key,
+                    "img": normalize.img_url(row.get("img")) or "",
+                }
+            self._items = table
+        return self._items.get(item_id, {"name": "", "img": ""})
+
+    def constants_map(self, name: str) -> dict[int, str]:
+        if name not in self._meta_constants:
+            raw = self.client.constants(name) or {}
+            out: dict[int, str] = {}
+            if isinstance(raw, dict):
+                for key, row in raw.items():
+                    if isinstance(row, dict):
+                        label = row.get("name") or row.get("dname") or key
+                    else:
+                        label = str(row)
+                    label = str(label)
+                    for prefix in ("game_mode_", "game_modes_", "mode_"):
+                        if label.startswith(prefix):
+                            label = label[len(prefix) :]
+                    label = label.replace("_", " ").strip().title()
+                    try:
+                        out[int(key)] = label
+                    except (TypeError, ValueError):
+                        continue
+            self._meta_constants[name] = out
+        return self._meta_constants[name]
+
+    # --- queries ---
 
     def search(self, query: str) -> list[Player]:
         raw = self.client.search(query)
@@ -53,6 +107,18 @@ class Dota2Adapter(GameAdapter):
             normalize.match_from_recent(account_id, row, normalize.hero_index_name(self._heroes, row))
             for row in raw[:limit]
         ]
+
+    def career_stats(self, account_id: int) -> dict[str, Any]:
+        return {
+            "wl": self.client.player_wl(account_id),
+            "totals": self.client.player_totals(account_id),
+            "heroes": self.client.player_heroes(account_id),
+        }
+
+    def match_detail(self, match_id: int) -> MatchDetail:
+        heroes = self._hero_map()
+        _, icons = self._hero_assets()
+        return normalize.match_from_detail(self.client.match(match_id), heroes, icons)
 
     def heroes(self) -> list[HeroMeta]:
         self._hero_map()

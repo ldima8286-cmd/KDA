@@ -4,7 +4,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from kda.format import fmt_ago, fmt_dur, h_ratio, rank_name  # noqa: E402
+from kda.format import (  # noqa: E402
+    fmt_ago,
+    fmt_dur,
+    fmt_mark,
+    game_mode_name,
+    h_ratio,
+    lobby_name,
+    rank_name,
+    rank_parts,
+)
 
 
 class FormatTests(unittest.TestCase):
@@ -32,3 +41,25 @@ class FormatTests(unittest.TestCase):
         self.assertEqual(fmt_ago(now - 120, now=now), "2 мин")
         self.assertEqual(fmt_ago(now - 7200, now=now), "2 ч")
         self.assertEqual(fmt_ago(now - 172800, now=now), "2 дн")
+
+    def test_fmt_mark(self):
+        self.assertEqual(fmt_mark(None), "—")
+        self.assertEqual(fmt_mark(0), "0:00")
+        self.assertEqual(fmt_mark(95), "1:35")
+        self.assertEqual(fmt_mark(-45), "-0:45")
+
+    def test_rank_parts(self):
+        self.assertEqual(rank_parts(None), (0, 0))
+        self.assertEqual(rank_parts(53), (5, 3))
+        self.assertEqual(rank_parts(80), (8, 0))
+        self.assertEqual(rank_parts(1), (0, 0))
+
+    def test_mode_name(self):
+        self.assertEqual(game_mode_name(22), "All Draft")
+        self.assertEqual(game_mode_name(23), "Turbo")
+        self.assertEqual(game_mode_name(99), "режим 99")
+        self.assertEqual(game_mode_name(22, {22: "custom"}), "custom")
+
+    def test_lobby_name(self):
+        self.assertEqual(lobby_name(7), "Ranked")
+        self.assertEqual(lobby_name(999), "лобби 999")

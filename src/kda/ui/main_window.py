@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from ..services import KdaService
 from . import workers
-from .panels import HomePanel, MetaHubPanel, SkillLabPanel
+from .panels import HomePanel, MatchPanel, MetaHubPanel, SkillLabPanel
 from .theme import C
 
 _NAV = (("home", "Обзор"), ("player", "Skill Lab"), ("meta", "Meta Hub"))
@@ -134,12 +134,16 @@ class MainWindow(QMainWindow):
     def _build_stack(self) -> QStackedWidget:
         self.home_panel = HomePanel()
         self.skill_lab_panel = SkillLabPanel()
+        self.skill_lab_panel.matchRequested.connect(self._load_match)
         self.meta_hub_panel = MetaHubPanel()
+        self.match_panel = MatchPanel()
+        self.match_panel.backRequested.connect(lambda: self.show_panel("player"))
 
         stack = QStackedWidget()
-        stack.addWidget(self.home_panel)      # index 0
+        stack.addWidget(self.home_panel)       # index 0
         stack.addWidget(self.skill_lab_panel)  # index 1
         stack.addWidget(self.meta_hub_panel)   # index 2
+        stack.addWidget(self.match_panel)      # index 3
         self._stack = stack
         return stack
 
@@ -156,9 +160,10 @@ class MainWindow(QMainWindow):
     # ---------- navigation ----------
 
     def show_panel(self, key: str) -> None:
-        index = {"home": 0, "player": 1, "meta": 2}[key]
+        index = {"home": 0, "player": 1, "meta": 2, "match": 3}[key]
         self._stack.setCurrentIndex(index)
-        self._nav_buttons[key].setChecked(True)
+        if key in self._nav_buttons:
+            self._nav_buttons[key].setChecked(True)
 
     # ---------- data ----------
 
@@ -209,9 +214,17 @@ class MainWindow(QMainWindow):
     def _load_profile(self, account_id: int) -> None:
         self.show_panel("player")
         self.set_status("загрузка игрока…", "busy")
+        self._profile_id = account_id
         workers.submit(
             self.service.profile,
             self._on_profile,
+            self._on_error,
+            None,
+            account_id,
+        )
+        workers.submit(
+            self.service.career,
+            self._on_career,
             self._on_error,
             None,
             account_id,
@@ -221,6 +234,25 @@ class MainWindow(QMainWindow):
         self.skill_lab_panel.set_profile(profile)
         name = profile["player"].get("name") or str(profile["player"].get("account_id"))
         self.set_status(f"профиль загружен · {name}", "ok")
+
+    def _on_career(self, career: dict) -> None:
+        self.skill_lab_panel.set_career(career)
+
+    def _load_match(self, match_id: int) -> None:
+        self.show_panel("match")
+        self.match_panel.clear()
+        self.set_status(f"загрузка матча {match_id}…", "busy")
+        workers.submit(
+            self.service.match,
+            self._on_match,
+            self._on_error,
+            None,
+            match_id,
+        )
+
+    def _on_match(self, data: dict) -> None:
+        self.match_panel.set_match(data)
+        self.set_status(f"матч {data['match_id']} загружен", "ok")
 
     # ---------- lifecycle ----------
 

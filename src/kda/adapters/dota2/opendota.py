@@ -26,7 +26,7 @@ class OpenDotaClient:
         self.cache = TTLCache(ttl)
         self._client = httpx.Client(
             base_url=self.base,
-            timeout=httpx.Timeout(30.0),
+            timeout=httpx.Timeout(30.0, read=90.0),
             headers={"User-Agent": "KDA/0.1 (+https://github.com)"},
         )
 
@@ -75,6 +75,24 @@ class OpenDotaClient:
         data = self._get(f"/players/{account_id}/recentMatches")
         return data if isinstance(data, list) else []
 
+    def player_heroes(self, account_id: int) -> list[dict[str, Any]]:
+        """Career stats per hero (games/win/last_played)."""
+        data = self._get(f"/players/{account_id}/heroes")
+        return data if isinstance(data, list) else []
+
+    def player_totals(self, account_id: int) -> list[dict[str, Any]]:
+        """Career averages (kills/deaths/gpm/... sums with sample counts)."""
+        data = self._get(f"/players/{account_id}/totals")
+        return data if isinstance(data, list) else []
+
+    def player_wl(self, account_id: int) -> dict[str, Any]:
+        data = self._get(f"/players/{account_id}/wl")
+        return data if isinstance(data, dict) else {}
+
+    def match(self, match_id: int) -> dict[str, Any]:
+        data = self._get(f"/matches/{match_id}")
+        return data if isinstance(data, dict) else {}
+
     def heroes(self) -> list[dict[str, Any]]:
         data = self._get("/heroes")
         return data if isinstance(data, list) else []
@@ -82,3 +100,8 @@ class OpenDotaClient:
     def hero_stats(self) -> list[dict[str, Any]]:
         data = self._get("/heroStats")
         return data if isinstance(data, list) else []
+
+    # --- reference data ---
+
+    def constants(self, name: str) -> Any:
+        return self._get(f"/constants/{name}")

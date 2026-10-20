@@ -75,6 +75,6 @@ class HomePanel(QWidget):
         top_pub = (meta.get("pub_ranked") or [])[:8]
         self._pub_table.setRowCount(len(top_pub))
         for row, hero in enumerate(top_pub):
-            self._pub_table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
+            self._pub_table.setCellWidget(row, 0, hero_cell(hero.get("icon"), hero["name"]))
             set_text(self._pub_table, row, 1, f"{hero['pub_pick_share']}%", mono=True, right=True)
             set_text(self._pub_table, row, 2, f"{hero['pub_winrate']}%", mono=True, right=True)

@@ -97,6 +97,17 @@ QLabel[rank] {{
 QLabel[heroName] {{ color: {C['ink']}; }}
 QLabel[heroIcon] {{ background: {C['panel3']}; border: 1px solid {C['line2']}; border-radius: 6px; }}
 QLabel[avatar] {{ background: {C['panel3']}; border: 1px solid {C['line2']}; border-radius: 12px; }}
+QFrame[itemIcon] {{ background: {C['panel3']}; border: 1px solid {C['line2']}; border-radius: 5px; }}
+QLabel[linkLabel] {{ color: {C['teal']}; font-size: 12px; }}
+QLabel[sectionLabel] {{
+    color: {C['ink']};
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}}
+QLabel[teamRadiant] {{ color: {C['win']}; font-size: 12px; font-weight: 700; letter-spacing: 1px; }}
+QLabel[teamDire] {{ color: {C['loss']}; font-size: 12px; font-weight: 700; letter-spacing: 1px; }}
+QLabel[mono] {{ font-family: monospace; color: {C['ink2']}; }}
 QLabel[chip] {{
     background: {C['panel']};
     border: 1px solid {C['line']};

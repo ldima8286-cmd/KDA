@@ -3,16 +3,34 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ...analytics.skill_lab import BUCKET
-from ...format import fmt_ago, fmt_dur, fmt_k, rank_name
+from ...format import fmt_ago, fmt_dur, fmt_int, fmt_k, rank_name
 from ..theme import C
-from ..widgets import Avatar, Panel, StatCard, TrendChart, hero_cell, make_table, set_text
+from ..widgets import (
+    Avatar,
+    Panel,
+    RankBadge,
+    StatCard,
+    TrendChart,
+    hero_cell,
+    make_table,
+    set_text,
+)
 
 
 class SkillLabPanel(QWidget):
+    matchRequested = Signal(int)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         outer = QVBoxLayout(self)
@@ -52,16 +70,24 @@ class SkillLabPanel(QWidget):
         id_box.addStretch(1)
         head_row.addWidget(self.avatar)
         head_row.addLayout(id_box, 1)
+
+        rank_box = QVBoxLayout()
+        rank_box.setSpacing(4)
+        rank_box.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.rank_badge = RankBadge()
         self.rank_chip = QLabel("")
         self.rank_chip.setProperty("rank", True)
-        head_row.addWidget(self.rank_chip)
+        self.rank_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        rank_box.addWidget(self.rank_badge, 0, Qt.AlignmentFlag.AlignRight)
+        rank_box.addWidget(self.rank_chip, 0, Qt.AlignmentFlag.AlignRight)
+        head_row.addLayout(rank_box)
         head.add_layout(head_row)
         content.addWidget(head)
 
         # --- stat cards ---
         cards = QHBoxLayout()
         cards.setSpacing(14)
-        self.card_wr = StatCard("Winrate", "—")
+        self.card_wr = StatCard("Winrate (20)", "—")
         self.card_kda = StatCard("Средний KDA", "—")
         self.card_gpm = StatCard("GPM", "—", accent="accent")
         self.card_played = StatCard("Сыграно", "—")
@@ -78,19 +104,58 @@ class SkillLabPanel(QWidget):
         chart_panel.add(self.chart)
         split.addWidget(chart_panel, 3)
 
-        heroes_panel = Panel("Лучшие герои")
+        heroes_panel = Panel("Лучшие герои", "по последним матчам")
         self.heroes_table = make_table(["Герой", "Игр", "WR", "KDA"], numeric={1, 2, 3})
         heroes_panel.add(self.heroes_table)
         split.addWidget(heroes_panel, 2)
 
         content.addLayout(split)
 
+        # --- career ---
+        career_panel = Panel("Карьера", "вся история аккаунта")
+        career_grid = QGridLayout()
+        career_grid.setHorizontalSpacing(28)
+        career_grid.setVerticalSpacing(14)
+        self._career_values: dict[str, QLabel] = {}
+        specs = [
+            ("games", "Игр"),
+            ("winrate", "Winrate"),
+            ("kda", "KDA"),
+            ("gpm", "GPM"),
+            ("xpm", "XPM"),
+            ("last_hits", "Добивания"),
+            ("hero_damage", "Урон по героям"),
+            ("tower_damage", "Урон по строениям"),
+        ]
+        for i, (key, label) in enumerate(specs):
+            box = QVBoxLayout()
+            box.setSpacing(2)
+            lab = QLabel(label.upper())
+            lab.setProperty("statLabel", True)
+            val = QLabel("—")
+            val.setProperty("mono", True)
+            box.addWidget(lab)
+            box.addWidget(val)
+            self._career_values[key] = val
+            career_grid.addLayout(box, i // 4, i % 4)
+        career_panel.add_layout(career_grid)
+
+        popular_head = QLabel("ПОПУЛЯРНЫЕ ГЕРОИ · ЗА ВСЮ ИСТОРИЮ")
+        popular_head.setProperty("sectionLabel", True)
+        career_panel.add(popular_head)
+        self.popular_table = make_table(["Герой", "Игр", "W / L", "WR"], numeric={1, 2, 3})
+        self.popular_table.setMaximumHeight(230)
+        career_panel.add(self.popular_table)
+        content.addWidget(career_panel)
+
         # --- recent matches ---
-        recent_panel = Panel("Последние матчи")
+        recent_panel = Panel("Последние матчи", "клик — открыть матч")
         self.recent_table = make_table(
             ["Герой", "Итог", "K / D / A", "GPM / XPM", "Длит.", "Когда"],
             numeric={2, 3, 4, 5},
+            clickable=True,
         )
+        self.recent_table.rowClicked.connect(self._on_recent_clicked)
         recent_panel.add(self.recent_table)
         content.addWidget(recent_panel)
 
@@ -100,6 +165,7 @@ class SkillLabPanel(QWidget):
 
         self._body = scroll
         self._body.hide()
+        self._recent_ids: list[int] = []
 
     # --- data ---
 
@@ -111,7 +177,8 @@ class SkillLabPanel(QWidget):
         self.name_label.setText(player.get("name") or str(player.get("account_id")))
         country = player.get("country")
         self.handle.setText(f"account_id {player.get('account_id')}" + (f" · {country}" if country else ""))
-        self.rank_chip.setText(f"◆ {rank_name(player.get('rank_tier'))}")
+        self.rank_badge.set_rank(player.get("rank_tier"), player.get("leaderboard_rank"))
+        self.rank_chip.setText(rank_name(player.get("rank_tier")))
 
         self.card_wr.set_value(
             f"{summary['winrate']}%",
@@ -129,15 +196,18 @@ class SkillLabPanel(QWidget):
         heroes = (profile.get("heroes") or [])[:12]
         self.heroes_table.setRowCount(len(heroes))
         for row, hero in enumerate(heroes):
-            self.heroes_table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
+            self.heroes_table.setCellWidget(row, 0, hero_cell(hero.get("icon"), hero["name"]))
             set_text(self.heroes_table, row, 1, hero["matches"], mono=True, right=True)
             set_text(self.heroes_table, row, 2, f"{hero['winrate']}%", mono=True, right=True)
             set_text(self.heroes_table, row, 3, hero["avg_kda"], mono=True, right=True)
 
+        self._set_career(profile.get("career") or {})
+
         recent = profile.get("recent") or []
+        self._recent_ids = [int(m["match_id"]) for m in recent]
         self.recent_table.setRowCount(len(recent))
         for row, match in enumerate(recent):
-            self.recent_table.setCellWidget(row, 0, hero_cell(match.get("img"), match["hero_name"]))
+            self.recent_table.setCellWidget(row, 0, hero_cell(match.get("icon"), match["hero_name"]))
             set_text(
                 self.recent_table,
                 row,
@@ -167,6 +237,42 @@ class SkillLabPanel(QWidget):
         self._body.show()
         self.empty.hide()
 
+    def set_career(self, career: dict[str, Any]) -> None:
+        self._set_career(career)
+
+    def _set_career(self, career: dict[str, Any]) -> None:
+        averages = career.get("averages") or {}
+        wl = career.get("wl") or {}
+        games = wl.get("games") or 0
+
+        self._career_values["games"].setText(fmt_int(games) if games else "—")
+        self._career_values["winrate"].setText(
+            f"{career['winrate']}%  ·  {wl.get('win', 0)}W / {wl.get('lose', 0)}L" if games else "—"
+        )
+        for key, field in (
+            ("kda", "kda"),
+            ("gpm", "gold_per_min"),
+            ("xpm", "xp_per_min"),
+            ("last_hits", "last_hits"),
+            ("hero_damage", "hero_damage"),
+            ("tower_damage", "tower_damage"),
+        ):
+            value = averages.get(field)
+            self._career_values[key].setText(fmt_int(value) if value else "—")
+
+        popular = career.get("popular_heroes") or []
+        self.popular_table.setRowCount(len(popular))
+        for row, hero in enumerate(popular):
+            self.popular_table.setCellWidget(row, 0, hero_cell(hero.get("img"), f"#{hero['hero_id']}"))
+            set_text(self.popular_table, row, 1, fmt_int(hero["games"]), mono=True, right=True)
+            set_text(self.popular_table, row, 2, f"{hero['wins']} / {hero['lost']}", mono=True, right=True)
+            set_text(self.popular_table, row, 3, f"{hero['winrate']}%", mono=True, right=True)
+
+    def _on_recent_clicked(self, row: int) -> None:
+        if 0 <= row < len(self._recent_ids):
+            self.matchRequested.emit(self._recent_ids[row])
+
     def clear(self) -> None:
         self._body.hide()
         self.empty.show()
+

@@ -1,10 +1,20 @@
 """Reusable KDA widgets: panels, stat cards, hero icons and the trend chart."""
 from __future__ import annotations
 
+import math
 from typing import Any
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QRadialGradient,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -63,34 +73,59 @@ class Panel(QFrame):
 
 
 class HeroIcon(QLabel):
-    """24px hero thumbnail, loaded asynchronously by URL."""
+    """Hero thumbnail, loaded asynchronously by URL.
+
+    Prefers the 32x32 square ``icon`` asset; the wide ``img`` banner is cropped
+    to a square by aspect, never stretched.
+    """
 
     SIZE = 24
 
     def __init__(self, url: str | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._size = self.SIZE
         self.setProperty("heroIcon", True)
-        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setFixedSize(self._size, self._size)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setScaledContents(True)
         self._url = url
         cache = ImageCache.instance()
         cache.loaded.connect(self._on_loaded)
         self.set_source(url)
+
+    def _cover(self, pixmap: QPixmap) -> QPixmap:
+        if pixmap.isNull():
+            return pixmap
+        if pixmap.width() == pixmap.height():
+            return pixmap.scaled(
+                self._size,
+                self._size,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        side = min(pixmap.width(), pixmap.height())
+        x = (pixmap.width() - side) // 2
+        y = (pixmap.height() - side) // 2
+        cropped = pixmap.copy(x, y, side, side)
+        return cropped.scaled(
+            self._size,
+            self._size,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
 
     def set_source(self, url: str | None) -> None:
         self._url = url
         cache = ImageCache.instance()
         cached = cache.cached(url)
         if cached is not None:
-            self.setPixmap(cached)
+            self.setPixmap(self._cover(cached))
         else:
             self.clear()
             cache.request(url)
 
     def _on_loaded(self, url: str, pixmap: QPixmap) -> None:
         if url == self._url:
-            self.setPixmap(pixmap)
+            self.setPixmap(self._cover(pixmap))
 
 
 class Avatar(HeroIcon):
@@ -100,10 +135,170 @@ class Avatar(HeroIcon):
 
     def __init__(self, url: str | None = None, parent: QWidget | None = None) -> None:
         super().__init__(url, parent)
+        self._size = self.SIZE
         self.setProperty("heroIcon", False)
         self.setProperty("avatar", True)
-        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setFixedSize(self._size, self._size)
         self.set_source(url)
+
+
+class ItemIcon(QFrame):
+    """Small square item tile, async-loaded; shows a slot placeholder when empty."""
+
+    SIZE = 30
+
+    def __init__(self, url: str | None = None, tip: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("itemIcon", True)
+        self.setFixedSize(self.SIZE, self.SIZE)
+        if tip:
+            self.setToolTip(tip)
+
+        self._label = QLabel(self)
+        self._label.setGeometry(0, 0, self.SIZE, self.SIZE)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setScaledContents(True)
+        if url:
+            cache = ImageCache.instance()
+            cached = cache.cached(url)
+            if cached is not None:
+                self._label.setPixmap(self._scaled(cached))
+            else:
+                cache.loaded.connect(self._on_loaded)
+                self._url = url
+                cache.request(url)
+        else:
+            self._url = ""
+
+    def _scaled(self, pixmap: QPixmap) -> QPixmap:
+        return pixmap.scaled(
+            self.SIZE,
+            self.SIZE,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+    def _on_loaded(self, url: str, pixmap: QPixmap) -> None:
+        if url == self._url:
+            self._label.setPixmap(self._scaled(pixmap))
+
+
+class RankBadge(QWidget):
+    """Painter-drawn rank medal driven by a Dota rank_tier (division + stars)."""
+
+    _COLORS = [
+        ("#8a95a5", "#c3ccd8"),  # Herald
+        ("#9a6b2f", "#d59a4a"),  # Guardian
+        ("#3f7d8c", "#6fb7c6"),  # Crusader
+        ("#4a6f9c", "#7ba3d1"),  # Archon
+        ("#5b8a63", "#86c092"),  # Legend
+        ("#6a5aa0", "#a08fd8"),  # Ancient
+        ("#9c4a4a", "#d98080"),  # Divine
+        ("#b8892e", "#f0c063"),  # Immortal
+    ]
+    _LABELS = ["Herald", "Guardian", "Crusader", "Archon", "Legend", "Ancient", "Divine", "Immortal"]
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._division = 0
+        self._star = 0
+        self._leaderboard: int | None = None
+        self.setFixedSize(46, 46)
+        self.setToolTip("Без ранга")
+
+    def set_rank(self, tier: int | None, leaderboard: int | None = None) -> None:
+        if not tier:
+            self._division, self._star = 0, 0
+        else:
+            division, star = divmod(int(tier), 10)
+            if 1 <= division <= 8:
+                self._division, self._star = division, min(star, 5)
+            else:
+                self._division, self._star = 0, 0
+        self._leaderboard = leaderboard
+        if self._division:
+            text = f"{self._LABELS[self._division - 1]} {self._star}"
+            if leaderboard:
+                text += f" · лидерборд #{leaderboard}"
+        else:
+            text = "Без ранга"
+        self.setToolTip(text)
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, ARG002
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        cx, cy, r = 23.0, 23.0, 19.0
+        if not self._division:
+            painter.setBrush(QColor(C["panel3"]))
+            painter.setPen(QPen(QColor(C["line2"]), 1.5))
+            painter.drawEllipse(QPointF(cx, cy), r, r)
+            painter.setPen(QColor(C["faint"]))
+            font = QFont()
+            font.setPixelSize(18)
+            painter.setFont(font)
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "—")
+            return
+
+        dark, light = self._COLORS[self._division - 1]
+
+        ring = QRadialGradient(cx, cy - 4, r * 1.5)
+        ring.setColorAt(0.0, QColor(light))
+        ring.setColorAt(1.0, QColor(dark))
+        painter.setBrush(ring)
+        painter.drawEllipse(QPointF(cx, cy), r, r)
+
+        painter.setPen(QPen(QColor(0, 0, 0, 90), 1.4))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QPointF(cx, cy), r - 0.8, r - 0.8)
+        painter.drawEllipse(QPointF(cx, cy), r - 5.5, r - 5.5)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#12100b"))
+        star_r = 6.3
+        painter.drawEllipse(QPointF(cx, cy), star_r, star_r)
+
+        if self._star:
+            self._draw_stars(painter, cx, cy, self._star)
+        else:
+            painter.setPen(QColor(light))
+            font = QFont("monospace")
+            font.setPixelSize(11)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, str(self._division))
+
+    @staticmethod
+    def _draw_stars(painter: QPainter, cx: float, cy: float, count: int) -> None:
+        path = QPainterPath()
+        outer, inner = 5.4, 2.3
+        points = []
+        for i in range(10):
+            angle = -90 + i * 36
+            radius = outer if i % 2 == 0 else inner
+            x = radius * math.cos(math.radians(angle))
+            y = radius * math.sin(math.radians(angle))
+            points.append((cx + x, cy + y))
+        path.moveTo(*points[0])
+        for pt in points[1:]:
+            path.lineTo(*pt)
+        path.closeSubpath()
+        painter.setBrush(QColor("#f2d489"))
+        painter.drawPath(path)
+
+
+def item_cell(metas: list[dict[str, str]]) -> QWidget:
+    """Row of six item tiles plus the neutral slot."""
+    wrap = QWidget()
+    lay = QHBoxLayout(wrap)
+    lay.setContentsMargins(4, 2, 4, 2)
+    lay.setSpacing(3)
+    for meta in (metas or [])[:6]:
+        lay.addWidget(ItemIcon(meta.get("img") or None, meta.get("name") or ""))
+    lay.addStretch(1)
+    return wrap
 
 
 def hero_cell(url: str | None, name: str) -> QWidget:
@@ -267,10 +462,25 @@ class NumericItem(QTableWidgetItem):
             return self.text() < other.text()
 
 
-def make_table(headers: list[str], numeric: set[int] | None = None) -> QTableWidget:
+class ClickableTable(QTableWidget):
+    """Table that emits the clicked row so panels can open a detail view."""
+
+    rowClicked = Signal(int)
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.cellClicked.connect(lambda row, _col: self.rowClicked.emit(row))
+
+
+def make_table(
+    headers: list[str],
+    numeric: set[int] | None = None,
+    clickable: bool = False,
+) -> QTableWidget:
     """Bare, flat analytics table: no grid, no selection, sortable headers."""
     numeric = numeric or set()
-    table = QTableWidget(0, len(headers))
+    table = ClickableTable(0, len(headers)) if clickable else QTableWidget(0, len(headers))
     table.setHorizontalHeaderLabels(headers)
     table.verticalHeader().setVisible(False)
     table.setAlternatingRowColors(True)
