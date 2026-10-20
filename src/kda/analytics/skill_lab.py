@@ -182,6 +182,8 @@ def match_summary(detail: MatchDetail) -> dict:
         "radiant_score": match.radiant_score,
         "dire_score": match.dire_score,
         "has_parsed": detail.has_parsed,
+        "gold_adv": list(detail.gold_adv),
+        "xp_adv": list(detail.xp_adv),
         "picks_bans": [
             {
                 "hero_id": pb.hero_id,
@@ -197,4 +199,101 @@ def match_summary(detail: MatchDetail) -> dict:
         ],
         "radiant": [player_row(p) for p in match.team(True)],
         "dire": [player_row(p) for p in match.team(False)],
+    }
+
+
+def hero_from_raw(raw: dict, heroes: dict[int, str] | None = None) -> dict:
+    """Shape a hero's matchups, duration winrate and item popularity."""
+    heroes = heroes or {}
+
+    matchups = []
+    ranked = sorted(raw.get("matchups") or [], key=lambda m: m.get("games_played", 0), reverse=True)
+    for row in ranked[:12]:
+        other = int(row.get("hero_id") or 0)
+        games = int(row.get("games_played") or 0)
+        wins = int(row.get("wins") or 0)
+        matchups.append(
+            {
+                "hero_id": other,
+                "name": heroes.get(other, f"hero #{other}"),
+                "games": games,
+                "wins": wins,
+                "winrate": round(100.0 * wins / games, 1) if games else 0.0,
+            }
+        )
+
+    duration_bins = []
+    for row in sorted(raw.get("durations") or [], key=lambda e: int(e.get("duration_bin") or 0)):
+        games = int(row.get("games_played") or 0)
+        wins = int(row.get("wins") or 0)
+        if not games:
+            continue
+        duration_bins.append(
+            {
+                "minute": int(row.get("duration_bin") or 0) // 60,
+                "games": games,
+                "wins": wins,
+                "winrate": round(100.0 * wins / games, 1),
+            }
+        )
+
+    items_raw = raw.get("items") or {}
+    items: dict[str, list[int]] = {}
+    for phase in ("start_game_items", "early_game_items", "mid_game_items", "late_game_items"):
+        bucket = items_raw.get(phase) or {}
+        if isinstance(bucket, dict):
+            picked = sorted(bucket.items(), key=lambda kv: kv[1], reverse=True)[:8]
+            items[phase] = [int(k) for k, _ in picked]
+
+    return {
+        "hero_id": raw.get("hero_id"),
+        "name": raw.get("name"),
+        "img": raw.get("img"),
+        "icon": raw.get("icon"),
+        "matchups": matchups,
+        "durations": duration_bins,
+        "items": items,
+    }
+
+
+def pro_match_from_raw(raw: dict) -> dict:
+    return {
+        "match_id": int(raw.get("match_id") or 0),
+        "start_time": int(raw.get("start_time") or 0),
+        "duration": int(raw.get("duration") or 0),
+        "radiant_name": raw.get("radiant_name") or "Radiant",
+        "dire_name": raw.get("dire_name") or "Dire",
+        "radiant_win": bool(raw.get("radiant_win")),
+        "radiant_score": int(raw.get("radiant_score") or 0),
+        "dire_score": int(raw.get("dire_score") or 0),
+        "league_name": raw.get("league_name") or "",
+    }
+
+
+def team_from_raw(raw: dict) -> dict:
+    wins = int(raw.get("wins") or 0)
+    losses = int(raw.get("losses") or 0)
+    games = wins + losses
+    return {
+        "team_id": int(raw.get("team_id") or 0),
+        "name": raw.get("name") or f"team {raw.get('team_id')}",
+        "tag": raw.get("tag") or "",
+        "rating": round(float(raw.get("rating") or 0), 1),
+        "wins": wins,
+        "losses": losses,
+        "winrate": round(100.0 * wins / games, 1) if games else 0.0,
+        "logo_url": raw.get("logo_url"),
+    }
+
+
+def pro_player_from_raw(raw: dict) -> dict:
+    return {
+        "account_id": int(raw.get("account_id") or 0),
+        "name": raw.get("name") or raw.get("personaname") or f"player {raw.get('account_id')}",
+        "personaname": raw.get("personaname") or "",
+        "team_name": raw.get("team_name") or "",
+        "team_tag": raw.get("team_tag") or "",
+        "country": raw.get("country_code") or raw.get("loccountrycode"),
+        "avatar": raw.get("avatarfull"),
+        "is_pro": bool(raw.get("is_pro")),
     }

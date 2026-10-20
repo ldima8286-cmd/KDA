@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ..widgets import Panel, hero_cell, make_table, set_text
@@ -12,6 +12,8 @@ _MODES = (("pro", "Pro"), ("pub", "Пабы"))
 
 
 class MetaHubPanel(QWidget):
+    heroRequested = Signal(int)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._meta: dict[str, Any] = {}
@@ -46,9 +48,17 @@ class MetaHubPanel(QWidget):
         self._table = make_table(
             ["Герой", "Pro pick", "Pro WR", "Pub pick", "Pub WR", "Роли"],
             numeric={1, 2, 3, 4},
+            clickable=True,
         )
         self._panel.add(self._table)
         group.buttonClicked.connect(self._on_mode_clicked)
+        self._table.rowClicked.connect(self._on_row_clicked)
+
+    def _on_row_clicked(self, row: int) -> None:
+        board_key = "pro_ranked" if self._mode == "pro" else "pub_ranked"
+        rows = self._meta.get(board_key) or []
+        if 0 <= row < len(rows):
+            self.heroRequested.emit(int(rows[row]["hero_id"]))
 
     # --- data ---
 

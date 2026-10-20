@@ -93,6 +93,39 @@ class OpenDotaClient:
         data = self._get(f"/matches/{match_id}")
         return data if isinstance(data, dict) else {}
 
+    def request_parse(self, match_id: int) -> bool:
+        """Ask OpenDota to parse a match. Returns True when the job was queued."""
+        try:
+            resp = self._client.post(f"/request/{match_id}")
+            resp.raise_for_status()
+            return True
+        except httpx.HTTPError:
+            return False
+
+    def hero_matchups(self, hero_id: int) -> list[dict[str, Any]]:
+        data = self._get(f"/heroes/{hero_id}/matchups")
+        return data if isinstance(data, list) else []
+
+    def hero_durations(self, hero_id: int) -> list[dict[str, Any]]:
+        data = self._get(f"/heroes/{hero_id}/durations")
+        return data if isinstance(data, list) else []
+
+    def hero_items(self, hero_id: int) -> dict[str, Any]:
+        data = self._get(f"/heroes/{hero_id}/itemPopularity")
+        return data if isinstance(data, dict) else {}
+
+    def pro_matches(self) -> list[dict[str, Any]]:
+        data = self._get("/proMatches")
+        return data if isinstance(data, list) else []
+
+    def pro_players(self) -> list[dict[str, Any]]:
+        data = self._get("/proPlayers")
+        return data if isinstance(data, list) else []
+
+    def teams(self) -> list[dict[str, Any]]:
+        data = self._get("/teams")
+        return data if isinstance(data, list) else []
+
     def heroes(self) -> list[dict[str, Any]]:
         data = self._get("/heroes")
         return data if isinstance(data, list) else []

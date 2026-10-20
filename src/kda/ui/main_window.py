@@ -6,6 +6,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -19,10 +20,24 @@ from PySide6.QtWidgets import (
 
 from ..services import KdaService
 from . import workers
-from .panels import HomePanel, MatchPanel, MetaHubPanel, SkillLabPanel
+from .panels import (
+    ComparePanel,
+    HeroPanel,
+    HomePanel,
+    MatchPanel,
+    MetaHubPanel,
+    ProPanel,
+    SkillLabPanel,
+)
 from .theme import C
 
-_NAV = (("home", "Обзор"), ("player", "Skill Lab"), ("meta", "Meta Hub"))
+_NAV = (
+    ("home", "Обзор"),
+    ("player", "Skill Lab"),
+    ("meta", "Meta Hub"),
+    ("pro", "Pro Scene"),
+    ("compare", "Сравнение"),
+)
 
 
 class MainWindow(QMainWindow):
@@ -30,6 +45,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service
         self._meta: dict | None = None
+        self._game = "dota2"
 
         self.setWindowTitle("KDA — esports intelligence")
         self.resize(1360, 880)
@@ -92,9 +108,12 @@ class MainWindow(QMainWindow):
 
         lay.addStretch(1)
 
-        chip = QLabel(f'<span style="color:{C["teal"]}">●</span>&nbsp; Dota 2')
-        chip.setProperty("chip", True)
-        lay.addWidget(chip)
+        self._game_combo = QComboBox()
+        for game in self.service.games:
+            self._game_combo.addItem(game["name"], game["slug"])
+        self._game_combo.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._game_combo.currentIndexChanged.connect(self._on_game_changed)
+        lay.addWidget(self._game_combo)
 
         self._refresh_btn = QPushButton("Обновить данные")
         self._refresh_btn.setProperty("ghost", True)
@@ -136,14 +155,27 @@ class MainWindow(QMainWindow):
         self.skill_lab_panel = SkillLabPanel()
         self.skill_lab_panel.matchRequested.connect(self._load_match)
         self.meta_hub_panel = MetaHubPanel()
+        self.meta_hub_panel.heroRequested.connect(self._load_hero)
         self.match_panel = MatchPanel()
-        self.match_panel.backRequested.connect(lambda: self.show_panel("player"))
+        self.match_panel.backRequested.connect(
+            lambda: self.show_panel(getattr(self, "_match_origin", "player"))
+        )
+        self.match_panel.parseRequested.connect(self._request_parse)
+        self.hero_panel = HeroPanel()
+        self.hero_panel.backRequested.connect(lambda: self.show_panel("meta"))
+        self.pro_panel = ProPanel()
+        self.pro_panel.matchRequested.connect(self._load_match)
+        self.compare_panel = ComparePanel()
+        self.compare_panel.compareRequested.connect(self._compare)
 
         stack = QStackedWidget()
         stack.addWidget(self.home_panel)       # index 0
         stack.addWidget(self.skill_lab_panel)  # index 1
         stack.addWidget(self.meta_hub_panel)   # index 2
         stack.addWidget(self.match_panel)      # index 3
+        stack.addWidget(self.hero_panel)       # index 4
+        stack.addWidget(self.pro_panel)        # index 5
+        stack.addWidget(self.compare_panel)    # index 6
         self._stack = stack
         return stack
 
@@ -160,17 +192,29 @@ class MainWindow(QMainWindow):
     # ---------- navigation ----------
 
     def show_panel(self, key: str) -> None:
-        index = {"home": 0, "player": 1, "meta": 2, "match": 3}[key]
+        index = {"home": 0, "player": 1, "meta": 2, "match": 3, "hero": 4, "pro": 5, "compare": 6}[key]
         self._stack.setCurrentIndex(index)
         if key in self._nav_buttons:
             self._nav_buttons[key].setChecked(True)
+        if key == "pro":
+            self._load_pro()
 
     # ---------- data ----------
 
     def refresh(self) -> None:
         self.set_status("обновление данных…", "busy")
         self._refresh_btn.setEnabled(False)
-        workers.submit(self.service.meta, self._on_meta, self._on_error, self._refresh_done)
+        workers.submit(
+            self.service.meta,
+            self._on_meta,
+            self._on_error,
+            self._refresh_done,
+            self._game,
+        )
+
+    def _refresh_meta(self) -> None:
+        self.set_status("смена игры…", "busy")
+        workers.submit(self.service.meta, self._on_meta, self._on_error, None, self._game)
 
     def _force_refresh(self) -> None:
         self.service.refresh()
@@ -189,6 +233,11 @@ class MainWindow(QMainWindow):
     def _on_error(self, message: str) -> None:
         self.set_status(f"нет соединения: {message[:60]}", "err")
 
+    def _on_game_changed(self) -> None:
+        self._game = self._game_combo.currentData() or "dota2"
+        self._pro_loaded = False
+        self._refresh_meta()
+
     def _on_search(self) -> None:
         query = self._search.text().strip()
         if not query:
@@ -203,6 +252,7 @@ class MainWindow(QMainWindow):
             self._on_error,
             None,
             query,
+            self._game,
         )
 
     def _on_search_results(self, results: list) -> None:
@@ -221,6 +271,7 @@ class MainWindow(QMainWindow):
             self._on_error,
             None,
             account_id,
+            self._game,
         )
         workers.submit(
             self.service.career,
@@ -228,6 +279,7 @@ class MainWindow(QMainWindow):
             self._on_error,
             None,
             account_id,
+            self._game,
         )
 
     def _on_profile(self, profile: dict) -> None:
@@ -239,6 +291,7 @@ class MainWindow(QMainWindow):
         self.skill_lab_panel.set_career(career)
 
     def _load_match(self, match_id: int) -> None:
+        self._match_origin = "pro" if self._stack.currentIndex() == 5 else "player"
         self.show_panel("match")
         self.match_panel.clear()
         self.set_status(f"загрузка матча {match_id}…", "busy")
@@ -248,11 +301,66 @@ class MainWindow(QMainWindow):
             self._on_error,
             None,
             match_id,
+            self._game,
         )
 
     def _on_match(self, data: dict) -> None:
         self.match_panel.set_match(data)
         self.set_status(f"матч {data['match_id']} загружен", "ok")
+
+    def _request_parse(self, match_id: int) -> None:
+        self.set_status(f"запрос парсинга матча {match_id}…", "busy")
+        workers.submit(
+            self.service.request_parse,
+            self._on_parse_done,
+            self._on_error,
+            None,
+            match_id,
+            self._game,
+        )
+
+    def _on_parse_done(self, ok: bool) -> None:
+        self.match_panel.show_parse_result(ok)
+        self.set_status("парсинг запрошен" if ok else "парсинг недоступен", "ok" if ok else "err")
+
+    def _load_hero(self, hero_id: int) -> None:
+        self.show_panel("hero")
+        self.hero_panel.clear()
+        self.set_status(f"загрузка героя {hero_id}…", "busy")
+        workers.submit(
+            self.service.hero_detail,
+            self._on_hero,
+            self._on_error,
+            None,
+            hero_id,
+            self._game,
+        )
+
+    def _on_hero(self, data: dict) -> None:
+        self.hero_panel.set_hero(data)
+        self.set_status(f"герой загружен · {data.get('name')}", "ok")
+
+    def _load_pro(self) -> None:
+        if getattr(self, "_pro_loaded", False):
+            return
+        self._pro_loaded = True
+        self.set_status("загрузка про-сцены…", "busy")
+        workers.submit(self.service.pro_scene, self._on_pro, self._on_error, None, self._game)
+
+    def _on_pro(self, data: dict) -> None:
+        self.pro_panel.set_scene(data)
+        self.set_status(
+            f"про-сцена · {len(data.get('matches') or [])} матчей", "ok"
+        )
+
+    def _compare(self, id_a: int, id_b: int) -> None:
+        self.compare_panel.set_loading()
+        self.set_status("сравнение игроков…", "busy")
+        workers.submit(self.service.compare, self._on_compare, self._on_error, None, id_a, id_b, self._game)
+
+    def _on_compare(self, data: dict) -> None:
+        self.compare_panel.set_result(data)
+        self.set_status("сравнение готово", "ok")
 
     # ---------- lifecycle ----------
 

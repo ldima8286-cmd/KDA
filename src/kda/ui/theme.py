@@ -233,6 +233,21 @@ QToolTip {{
     border: 1px solid {C['line2']};
     padding: 5px 8px;
 }}
+
+/* ---------- home dashboard ---------- */
+QWidget[heroCard] {{
+    background: {C['panel2']};
+    border: 1px solid {C['line']};
+    border-radius: {RADIUS_SM}px;
+}}
+QWidget[heroCard]:hover {{ border-color: {C['gold_dim']}; }}
+QProgressBar {{
+    background: {C['panel3']};
+    border: none;
+    border-radius: 2px;
+    height: 4px;
+}}
+QProgressBar::chunk {{ background: {C['gold']}; border-radius: 2px; }}
 """
 
 

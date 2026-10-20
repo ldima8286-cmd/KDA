@@ -149,6 +149,8 @@ def match_from_detail(
         match=match,
         picks_bans=picks_bans,
         objectives=objectives,
+        gold_adv=[int(v) for v in raw.get("radiant_gold_adv") or []],
+        xp_adv=[int(v) for v in raw.get("radiant_xp_adv") or []],
         has_parsed=bool(od.get("has_parsed")),
         parsed_data=True,
     )

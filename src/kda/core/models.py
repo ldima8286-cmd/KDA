@@ -113,6 +113,8 @@ class MatchDetail:
     match: Match
     picks_bans: List[PickBan] = field(default_factory=list)
     objectives: List[Objective] = field(default_factory=list)
+    gold_adv: List[int] = field(default_factory=list)
+    xp_adv: List[int] = field(default_factory=list)
     has_parsed: bool = False
     parsed_data: bool = False
 

@@ -251,3 +251,181 @@ class ServiceOfflineTests(unittest.TestCase):
         )
         self.assertEqual(career["winrate"], 75.0)
         self.assertEqual(career["averages"]["kills"], 2.0)
+
+    def test_hero_from_raw(self):
+        from kda.analytics.skill_lab import hero_from_raw
+
+        data = hero_from_raw(
+            {
+                "hero_id": 1,
+                "name": "Anti-Mage",
+                "matchups": [
+                    {"hero_id": 2, "games_played": 10, "wins": 6},
+                    {"hero_id": 3, "games_played": 4, "wins": 1},
+                ],
+                "durations": [
+                    {"duration_bin": 1800, "games_played": 100, "wins": 55},
+                    {"duration_bin": 600, "games_played": 50, "wins": 20},
+                ],
+                "items": {
+                    "start_game_items": {"63": 100, "29": 5},
+                    "early_game_items": {},
+                    "mid_game_items": {},
+                    "late_game_items": {},
+                },
+            },
+            {1: "Anti-Mage", 2: "Axe"},
+        )
+        self.assertEqual(data["matchups"][0]["hero_id"], 2)
+        self.assertEqual(data["matchups"][0]["name"], "Axe")
+        self.assertEqual(data["matchups"][0]["winrate"], 60.0)
+        self.assertEqual(data["durations"][0]["minute"], 10)
+        self.assertEqual(data["items"]["start_game_items"], [63, 29])
+
+    def test_match_summary_includes_adv(self):
+        from kda.adapters.dota2 import normalize
+        from kda.analytics.skill_lab import match_summary
+
+        detail = normalize.match_from_detail(
+            {
+                "match_id": 5,
+                "start_time": 1,
+                "duration": 100,
+                "radiant_win": True,
+                "radiant_gold_adv": [0, 100, -50],
+                "radiant_xp_adv": [0, 200, 300],
+                "players": [],
+            }
+        )
+        summary = match_summary(detail)
+        self.assertEqual(summary["gold_adv"], [0, 100, -50])
+        self.assertEqual(summary["xp_adv"], [0, 200, 300])
+
+    def test_pro_shapers_pure(self):
+        from kda.analytics.skill_lab import pro_match_from_raw, pro_player_from_raw, team_from_raw
+
+        m = pro_match_from_raw({"match_id": 9, "radiant_name": "A", "dire_name": "B", "radiant_win": True})
+        self.assertEqual(m["radiant_name"], "A")
+        self.assertTrue(m["radiant_win"])
+        t = team_from_raw({"team_id": 1, "name": "T", "wins": 3, "losses": 1, "rating": 1500.4})
+        self.assertEqual(t["winrate"], 75.0)
+        p = pro_player_from_raw({"account_id": 7, "name": "N", "team_name": "T"})
+        self.assertEqual(p["name"], "N")
+        self.assertEqual(p["team_name"], "T")
+
+    def test_service_hero_detail(self):
+        service = KdaService()
+        adapter = Dota2Adapter()
+        adapter.client = make_client(
+            {
+                "/heroes": [{"id": 1, "localized_name": "Anti-Mage"}],
+                "/heroStats": HERO_STATS,
+                "/heroes/1/matchups": [{"hero_id": 2, "games_played": 10, "wins": 4}],
+                "/heroes/1/durations": [{"duration_bin": 1800, "games_played": 10, "wins": 6}],
+                "/heroes/1/itemPopularity": {"start_game_items": {"63": 9}, "early_game_items": {}},
+                "/constants/items": {"power_treads": {"id": 63, "dname": "Power Treads", "img": "/x.png"}},
+            }
+        )
+        service._adapters["dota2"] = adapter
+        data = service.hero_detail(1)
+        self.assertEqual(data["name"], "Anti-Mage")
+        self.assertEqual(data["durations"][0]["winrate"], 60.0)
+        self.assertEqual(data["items"]["start_game_items"][0]["name"], "Power Treads")
+        service.close()
+
+    def test_service_pro_scene(self):
+        service = KdaService()
+        adapter = Dota2Adapter()
+        adapter.client = make_client(
+            {
+                "/proMatches": [
+                    {"match_id": 9, "radiant_name": "A", "dire_name": "B", "radiant_win": True,
+                     "duration": 2400, "start_time": 1700000000, "radiant_score": 20, "dire_score": 10,
+                     "league_name": "L"}
+                ],
+                "/teams": [{"team_id": 1, "name": "T", "tag": "T", "wins": 3, "losses": 1, "rating": 1500.0}],
+                "/proPlayers": [{"account_id": 7, "name": "N", "team_name": "T", "team_tag": "T"}],
+            }
+        )
+        service._adapters["dota2"] = adapter
+        scene = service.pro_scene()
+        self.assertEqual(scene["matches"][0]["match_id"], 9)
+        self.assertEqual(scene["teams"][0]["winrate"], 75.0)
+        self.assertEqual(scene["players"][0]["name"], "N")
+        service.close()
+
+    def test_service_compare(self):
+        service = KdaService()
+        adapter = Dota2Adapter()
+        adapter.client = make_client(
+            {
+                "/players/1": {"profile": {"account_id": 1, "personaname": "A", "rank_tier": 50}, "rank_tier": 50},
+                "/players/2": {"profile": {"account_id": 2, "personaname": "B"}, "rank_tier": None},
+                "/players/1/recentMatches": [{"match_id": 1, "hero_id": 1, "player_slot": 0, "radiant_win": True,
+                                              "duration": 100, "game_mode": 1, "lobby_type": 0, "start_time": 1,
+                                              "kills": 1, "deaths": 0, "assists": 1, "gold_per_min": 100,
+                                              "xp_per_min": 100}],
+                "/players/2/recentMatches": [],
+                "/players/1/wl": {"win": 1, "lose": 0}, "/players/1/totals": [], "/players/1/heroes": [],
+                "/players/2/wl": {"win": 0, "lose": 1}, "/players/2/totals": [], "/players/2/heroes": [],
+                "/heroes": [{"id": 1, "localized_name": "Anti-Mage"}],
+            }
+        )
+        service._adapters["dota2"] = adapter
+        data = service.compare(1, 2)
+        self.assertEqual(data["a"]["player"]["account_id"], 1)
+        self.assertEqual(data["b"]["career"]["winrate"], 0.0)
+        service.close()
+
+    def test_snapshot_store_roundtrip(self):
+        import tempfile
+        from pathlib import Path
+        from kda.core.store import SnapshotStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SnapshotStore(Path(tmp) / "s.db")
+            store.save("dota2:meta", {"count": 3})
+            entry = store.load("dota2:meta")
+            self.assertEqual(entry["value"]["count"], 3)
+            self.assertIn("dota2:meta", store.keys())
+            store.clear()
+            self.assertIsNone(store.load("dota2:meta"))
+            store.close()
+
+    def test_service_offline_fallback(self):
+        import tempfile
+        from pathlib import Path
+        from kda.core.store import SnapshotStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            service = KdaService(store=SnapshotStore(Path(tmp) / "s.db"))
+            service._adapters["dota2"] = Dota2Adapter()
+            service._adapters["dota2"].client = make_client(
+                {"/proMatches": [{"match_id": 1, "radiant_win": True}], "/teams": [], "/proPlayers": []}
+            )
+            first = service.pro_scene()
+            self.assertTrue(first["matches"])
+            self.assertFalse(service.offline)
+
+            service._adapters["dota2"].client = make_client({})
+            second = service.pro_scene()
+            self.assertEqual(second["matches"][0]["match_id"], 1)
+            self.assertTrue(service.offline)
+            service.close()
+
+    def test_cs2_adapter_offline_reference(self):
+        from kda.adapters.cs2 import CS2Adapter, premier_rank
+
+        adapter = CS2Adapter()
+        maps = adapter.heroes()
+        self.assertTrue(any(h.name == "Mirage" for h in maps))
+        self.assertEqual(premier_rank(0), "Без ранга")
+        self.assertEqual(premier_rank(21000), "Gold I")
+        self.assertEqual(premier_rank(90000), "Global Elite")
+        adapter.close()
+
+    def test_service_registers_two_games(self):
+        service = KdaService()
+        slugs = {g["slug"] for g in service.games}
+        self.assertEqual(slugs, {"dota2", "cs2"})
+        service.close()
