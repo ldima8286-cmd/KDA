@@ -332,3 +332,24 @@ class ServiceOfflineTests(unittest.TestCase):
         self.assertEqual(data["durations"][0]["winrate"], 60.0)
         self.assertEqual(data["items"]["start_game_items"][0]["name"], "Power Treads")
         service.close()
+
+    def test_service_pro_scene(self):
+        service = KdaService()
+        adapter = Dota2Adapter()
+        adapter.client = make_client(
+            {
+                "/proMatches": [
+                    {"match_id": 9, "radiant_name": "A", "dire_name": "B", "radiant_win": True,
+                     "duration": 2400, "start_time": 1700000000, "radiant_score": 20, "dire_score": 10,
+                     "league_name": "L"}
+                ],
+                "/teams": [{"team_id": 1, "name": "T", "tag": "T", "wins": 3, "losses": 1, "rating": 1500.0}],
+                "/proPlayers": [{"account_id": 7, "name": "N", "team_name": "T", "team_tag": "T"}],
+            }
+        )
+        service._adapters["dota2"] = adapter
+        scene = service.pro_scene()
+        self.assertEqual(scene["matches"][0]["match_id"], 9)
+        self.assertEqual(scene["teams"][0]["winrate"], 75.0)
+        self.assertEqual(scene["players"][0]["name"], "N")
+        service.close()

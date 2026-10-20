@@ -19,10 +19,17 @@ from PySide6.QtWidgets import (
 
 from ..services import KdaService
 from . import workers
-from .panels import HeroPanel, HomePanel, MatchPanel, MetaHubPanel, SkillLabPanel
+from .panels import (
+    HeroPanel,
+    HomePanel,
+    MatchPanel,
+    MetaHubPanel,
+    ProPanel,
+    SkillLabPanel,
+)
 from .theme import C
 
-_NAV = (("home", "Обзор"), ("player", "Skill Lab"), ("meta", "Meta Hub"))
+_NAV = (("home", "Обзор"), ("player", "Skill Lab"), ("meta", "Meta Hub"), ("pro", "Pro Scene"))
 
 
 class MainWindow(QMainWindow):
@@ -138,10 +145,14 @@ class MainWindow(QMainWindow):
         self.meta_hub_panel = MetaHubPanel()
         self.meta_hub_panel.heroRequested.connect(self._load_hero)
         self.match_panel = MatchPanel()
-        self.match_panel.backRequested.connect(lambda: self.show_panel("player"))
+        self.match_panel.backRequested.connect(
+            lambda: self.show_panel(getattr(self, "_match_origin", "player"))
+        )
         self.match_panel.parseRequested.connect(self._request_parse)
         self.hero_panel = HeroPanel()
         self.hero_panel.backRequested.connect(lambda: self.show_panel("meta"))
+        self.pro_panel = ProPanel()
+        self.pro_panel.matchRequested.connect(self._load_match)
 
         stack = QStackedWidget()
         stack.addWidget(self.home_panel)       # index 0
@@ -149,6 +160,7 @@ class MainWindow(QMainWindow):
         stack.addWidget(self.meta_hub_panel)   # index 2
         stack.addWidget(self.match_panel)      # index 3
         stack.addWidget(self.hero_panel)       # index 4
+        stack.addWidget(self.pro_panel)        # index 5
         self._stack = stack
         return stack
 
@@ -165,10 +177,12 @@ class MainWindow(QMainWindow):
     # ---------- navigation ----------
 
     def show_panel(self, key: str) -> None:
-        index = {"home": 0, "player": 1, "meta": 2, "match": 3, "hero": 4}[key]
+        index = {"home": 0, "player": 1, "meta": 2, "match": 3, "hero": 4, "pro": 5}[key]
         self._stack.setCurrentIndex(index)
         if key in self._nav_buttons:
             self._nav_buttons[key].setChecked(True)
+        if key == "pro":
+            self._load_pro()
 
     # ---------- data ----------
 
@@ -244,6 +258,7 @@ class MainWindow(QMainWindow):
         self.skill_lab_panel.set_career(career)
 
     def _load_match(self, match_id: int) -> None:
+        self._match_origin = "pro" if self._stack.currentIndex() == 5 else "player"
         self.show_panel("match")
         self.match_panel.clear()
         self.set_status(f"загрузка матча {match_id}…", "busy")
@@ -288,6 +303,19 @@ class MainWindow(QMainWindow):
     def _on_hero(self, data: dict) -> None:
         self.hero_panel.set_hero(data)
         self.set_status(f"герой загружен · {data.get('name')}", "ok")
+
+    def _load_pro(self) -> None:
+        if getattr(self, "_pro_loaded", False):
+            return
+        self._pro_loaded = True
+        self.set_status("загрузка про-сцены…", "busy")
+        workers.submit(self.service.pro_scene, self._on_pro, self._on_error)
+
+    def _on_pro(self, data: dict) -> None:
+        self.pro_panel.set_scene(data)
+        self.set_status(
+            f"про-сцена · {len(data.get('matches') or [])} матчей", "ok"
+        )
 
     # ---------- lifecycle ----------
 
