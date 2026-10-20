@@ -32,6 +32,23 @@ from .images import ImageCache
 from .theme import C
 
 
+def _round_pixmap(pixmap: QPixmap, radius: int) -> QPixmap:
+    """Return a copy of the pixmap with rounded corners and transparency."""
+    if pixmap.isNull() or radius <= 0:
+        return pixmap
+    rounded = QPixmap(pixmap.size())
+    rounded.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(rounded)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    path = QPainterPath()
+    rect = QRectF(0, 0, pixmap.width(), pixmap.height())
+    path.addRoundedRect(rect, radius, radius)
+    painter.setClipPath(path)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.end()
+    return rounded
+
+
 class Panel(QFrame):
     """A titled surface; add widgets with add()."""
 
@@ -79,7 +96,7 @@ class HeroIcon(QLabel):
     to a square by aspect, never stretched.
     """
 
-    SIZE = 24
+    SIZE = 40
 
     def __init__(self, url: str | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -92,26 +109,26 @@ class HeroIcon(QLabel):
         cache.loaded.connect(self._on_loaded)
         self.set_source(url)
 
+    def resize_icon(self, size: int) -> None:
+        self._size = size
+        self.setFixedSize(size, size)
+        cached = ImageCache.instance().cached(self._url)
+        if cached is not None:
+            self.setPixmap(self._cover(cached))
+
     def _cover(self, pixmap: QPixmap) -> QPixmap:
         if pixmap.isNull():
             return pixmap
-        if pixmap.width() == pixmap.height():
-            return pixmap.scaled(
-                self._size,
-                self._size,
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
         side = min(pixmap.width(), pixmap.height())
         x = (pixmap.width() - side) // 2
         y = (pixmap.height() - side) // 2
-        cropped = pixmap.copy(x, y, side, side)
-        return cropped.scaled(
+        cropped = pixmap.copy(x, y, side, side).scaled(
             self._size,
             self._size,
             Qt.AspectRatioMode.IgnoreAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        return _round_pixmap(cropped, max(4, self._size // 5))
 
     def set_source(self, url: str | None) -> None:
         self._url = url
@@ -145,7 +162,7 @@ class Avatar(HeroIcon):
 class ItemIcon(QFrame):
     """Small square item tile, async-loaded; shows a slot placeholder when empty."""
 
-    SIZE = 30
+    SIZE = 32
 
     def __init__(self, url: str | None = None, tip: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -157,7 +174,6 @@ class ItemIcon(QFrame):
         self._label = QLabel(self)
         self._label.setGeometry(0, 0, self.SIZE, self.SIZE)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._label.setScaledContents(True)
         if url:
             cache = ImageCache.instance()
             cached = cache.cached(url)
@@ -171,12 +187,18 @@ class ItemIcon(QFrame):
             self._url = ""
 
     def _scaled(self, pixmap: QPixmap) -> QPixmap:
-        return pixmap.scaled(
+        if pixmap.isNull():
+            return pixmap
+        side = min(pixmap.width(), pixmap.height())
+        x = (pixmap.width() - side) // 2
+        y = (pixmap.height() - side) // 2
+        cropped = pixmap.copy(x, y, side, side).scaled(
             self.SIZE,
             self.SIZE,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        return _round_pixmap(cropped, max(3, self.SIZE // 6))
 
     def _on_loaded(self, url: str, pixmap: QPixmap) -> None:
         if url == self._url:
@@ -301,14 +323,29 @@ def item_cell(metas: list[dict[str, str]]) -> QWidget:
     return wrap
 
 
-def hero_cell(url: str | None, name: str) -> QWidget:
+def set_row_id(table: QTableWidget, row: int, value: int) -> None:
+    """Stash an id on a row so it survives sorting; read it with row_id()."""
+    item = QTableWidgetItem()
+    item.setData(Qt.ItemDataRole.UserRole, int(value))
+    table.setItem(row, 0, item)
+
+
+def row_id(table: QTableWidget, row: int) -> int | None:
+    item = table.item(row, 0)
+    if item is None:
+        return None
+    value = item.data(Qt.ItemDataRole.UserRole)
+    return int(value) if value is not None else None
+
+
+def hero_cell(url: str | None, name: str, size: int = HeroIcon.SIZE) -> QWidget:
     """Icon + name row used inside table cells."""
     wrap = QWidget()
     lay = QHBoxLayout(wrap)
-    lay.setContentsMargins(4, 2, 4, 2)
-    lay.setSpacing(8)
+    lay.setContentsMargins(8, 5, 8, 5)
+    lay.setSpacing(11)
     icon = HeroIcon(url)
-    icon.setFixedSize(HeroIcon.SIZE, HeroIcon.SIZE)
+    icon.resize_icon(size)
     lay.addWidget(icon)
     label = QLabel(name)
     label.setProperty("heroName", True)
@@ -558,12 +595,14 @@ def make_table(
     headers: list[str],
     numeric: set[int] | None = None,
     clickable: bool = False,
+    row_height: int = 52,
 ) -> QTableWidget:
     """Bare, flat analytics table: no grid, no selection, sortable headers."""
     numeric = numeric or set()
     table = ClickableTable(0, len(headers)) if clickable else QTableWidget(0, len(headers))
     table.setHorizontalHeaderLabels(headers)
     table.verticalHeader().setVisible(False)
+    table.verticalHeader().setDefaultSectionSize(row_height)
     table.setAlternatingRowColors(True)
     table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)

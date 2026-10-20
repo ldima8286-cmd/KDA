@@ -6,7 +6,7 @@ from typing import Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from ..widgets import Panel, hero_cell, make_table, set_text
+from ..widgets import Panel, hero_cell, make_table, row_id, set_row_id, set_text
 
 _MODES = (("pro", "Pro"), ("pub", "Пабы"))
 
@@ -55,10 +55,9 @@ class MetaHubPanel(QWidget):
         self._table.rowClicked.connect(self._on_row_clicked)
 
     def _on_row_clicked(self, row: int) -> None:
-        board_key = "pro_ranked" if self._mode == "pro" else "pub_ranked"
-        rows = self._meta.get(board_key) or []
-        if 0 <= row < len(rows):
-            self.heroRequested.emit(int(rows[row]["hero_id"]))
+        hero_id = row_id(self._table, row)
+        if hero_id is not None:
+            self.heroRequested.emit(hero_id)
 
     # --- data ---
 
@@ -78,7 +77,8 @@ class MetaHubPanel(QWidget):
 
         for row, hero in enumerate(rows):
             # numeric cells keep plain values so NumericItem sorts correctly
-            self._table.setCellWidget(row, 0, hero_cell(hero.get("icon"), hero["name"]))
+            set_row_id(self._table, row, int(hero["hero_id"]))
+            self._table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
             set_text(self._table, row, 1, hero["pro_pick"], mono=True, right=True, numeric=True)
             set_text(self._table, row, 2, hero["pro_winrate"], mono=True, right=True, numeric=True)
             set_text(self._table, row, 3, hero["pub_pick"], mono=True, right=True, numeric=True)

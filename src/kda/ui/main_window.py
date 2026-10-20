@@ -152,6 +152,7 @@ class MainWindow(QMainWindow):
 
     def _build_stack(self) -> QStackedWidget:
         self.home_panel = HomePanel()
+        self.home_panel.heroRequested.connect(self._load_hero)
         self.skill_lab_panel = SkillLabPanel()
         self.skill_lab_panel.matchRequested.connect(self._load_match)
         self.meta_hub_panel = MetaHubPanel()
@@ -165,6 +166,7 @@ class MainWindow(QMainWindow):
         self.hero_panel.backRequested.connect(lambda: self.show_panel("meta"))
         self.pro_panel = ProPanel()
         self.pro_panel.matchRequested.connect(self._load_match)
+        self.pro_panel.playerRequested.connect(self._load_profile)
         self.compare_panel = ComparePanel()
         self.compare_panel.compareRequested.connect(self._compare)
 

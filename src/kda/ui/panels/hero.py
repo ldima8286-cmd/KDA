@@ -25,6 +25,8 @@ _PHASES = (
     ("late_game_items", "Поздняя игра"),
 )
 
+_TALENT_TIERS = (10, 15, 20, 25)
+
 
 class HeroPanel(QWidget):
     backRequested = Signal()
@@ -69,6 +71,9 @@ class HeroPanel(QWidget):
         self.hero_name.setProperty("title", True)
         title_row.addWidget(self.hero_icon)
         title_row.addWidget(self.hero_name, 1)
+        self.positions_label = QLabel("")
+        self.positions_label.setProperty("statLabel", True)
+        title_row.addWidget(self.positions_label)
         title_panel.add_layout(title_row)
         content.addWidget(title_panel)
 
@@ -86,6 +91,38 @@ class HeroPanel(QWidget):
         split.addWidget(matchups_panel, 2)
 
         content.addLayout(split)
+
+        build_panel = Panel("Раскачка способностей", "порядок по уровням")
+        build_row = QHBoxLayout()
+        build_row.setSpacing(6)
+        build_row.addStretch(1)
+        self._build_row = build_row
+        build_panel.add_layout(build_row)
+        self._build_note = QLabel("Нет данных")
+        self._build_note.setProperty("empty", True)
+        build_panel.add(self._build_note)
+        content.addWidget(build_panel)
+
+        talents_panel = Panel("Таланты", "самые популярные")
+        talents_grid = QGridLayout()
+        talents_grid.setHorizontalSpacing(16)
+        talents_grid.setVerticalSpacing(8)
+        self._talent_rows = {}
+        for i, tier in enumerate(_TALENT_TIERS):
+            lab = QLabel(f"Ур. {tier}")
+            lab.setProperty("statLabel", True)
+            host = QWidget()
+            host_lay = QVBoxLayout(host)
+            host_lay.setContentsMargins(0, 0, 0, 0)
+            host_lay.setSpacing(4)
+            self._talent_rows[tier] = host
+            talents_grid.addWidget(lab, i, 0)
+            talents_grid.addWidget(host, i, 1)
+        talents_panel.add_layout(talents_grid)
+        self._talents_note = QLabel("Нет данных")
+        self._talents_note.setProperty("empty", True)
+        talents_panel.add(self._talents_note)
+        content.addWidget(talents_panel)
 
         items_panel = Panel("Популярные предметы")
         items_grid = QGridLayout()
@@ -117,6 +154,16 @@ class HeroPanel(QWidget):
         self.hero_label.setText(f"герой {data.get('hero_id')}")
         self.hero_name.setText(data.get("name") or "—")
         self.hero_icon.set_source(data.get("icon") or data.get("img"))
+
+        positions = data.get("positions") or {}
+        if positions.get("total"):
+            self.positions_label.setText(
+                f"кора · {positions.get('core_share', 0)}%    саппорт · "
+                f"{positions.get('support_share', 0)}%"
+            )
+            self.positions_label.show()
+        else:
+            self.positions_label.hide()
 
         durations = data.get("durations") or []
         self.dur_chart.set_points(
@@ -150,8 +197,70 @@ class HeroPanel(QWidget):
             for meta in items.get(key) or []:
                 lay.insertWidget(lay.count() - 1, self._item_tile(meta))
 
+        self._fill_build((data.get("build") or {}).get("order") or [], data.get("build") or {})
+        self._fill_talents((data.get("build") or {}).get("talents") or [])
+
         self._body.show()
         self.empty.hide()
+
+    def _fill_build(self, order: list[dict[str, Any]], build: dict[str, Any]) -> None:
+        lay = self._build_row
+        while lay.count() > 1:
+            item = lay.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        entries = [e for e in order if e]
+        games = build.get("games") or 0
+        self._build_note.setVisible(not entries)
+        if games:
+            self._build_note.setText(f"На основе {fmt_int(games)} распарсенных матчей")
+        for entry in entries:
+            lay.insertWidget(lay.count() - 1, self._ability_tile(entry))
+
+    def _fill_talents(self, talents: list[dict[str, Any]]) -> None:
+        by_tier = {t["tier"]: t.get("options") or [] for t in talents}
+        any_data = False
+        for tier, host in self._talent_rows.items():
+            lay = host.layout()
+            while lay.count():
+                item = lay.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            options = by_tier.get(tier) or []
+            for opt in options[:2]:
+                any_data = True
+                lay.addWidget(self._talent_tile(opt))
+        self._talents_note.setVisible(not any_data)
+
+    @staticmethod
+    def _ability_tile(entry: dict[str, Any]) -> QWidget:
+        from ..widgets import ItemIcon
+
+        host = QWidget()
+        box = QVBoxLayout(host)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(2)
+        icon = ItemIcon(entry.get("img"), tip=f"{entry['name']} · ур. {entry['level']}")
+        box.addWidget(icon, 0, Qt.AlignmentFlag.AlignHCenter)
+        label = QLabel(str(entry["level"]))
+        label.setProperty("statLabel", True)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.addWidget(label)
+        return host
+
+    @staticmethod
+    def _talent_tile(opt: dict[str, Any]) -> QWidget:
+        host = QWidget()
+        box = QHBoxLayout(host)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(6)
+        name = QLabel(opt.get("name") or "—")
+        name.setWordWrap(True)
+        box.addWidget(name, 1)
+        share = QLabel(f"{opt.get('share', 0)}%")
+        share.setProperty("statLabel", True)
+        box.addWidget(share)
+        return host
 
     @staticmethod
     def _matchup_cell(mu: dict[str, Any]) -> QWidget:

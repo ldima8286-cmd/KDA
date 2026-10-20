@@ -141,6 +141,109 @@ def career_from_stats(
     }
 
 
+def _is_talent(ability_id: int, ability_names: dict[int, str]) -> bool:
+    name = ability_names.get(ability_id, "")
+    return name.startswith("special_bonus") or ability_id >= 7000
+
+
+def _humanize_ability(key: str) -> str:
+    text = key
+    if text.startswith("special_bonus_unique_"):
+        text = text[len("special_bonus_unique_"):]
+        return "Talent: " + text.replace("_", " ").strip().title()
+    if text.startswith("special_bonus_"):
+        text = text[len("special_bonus_"):]
+        return "Talent: " + text.replace("_", " ").strip().title()
+    for prefix in ("npc_dota_hero_", "dota_hero_"):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+    parts = text.split("_")
+    return " ".join(parts[1:]).title() if len(parts) > 1 else text.title()
+
+
+def _clean_talent(text: str) -> str:
+    import re
+
+    cleaned = re.sub(r"\{[svm]:[^}]*\}", "?", text)
+    return cleaned.strip() or "Talent"
+
+
+def hero_build_from_raw(
+    rows: list[dict],
+    ability_names: dict[int, str],
+    ability_meta: dict[int, dict],
+) -> dict:
+    """Most-common skill order and talent choices from parsed ability arrays.
+
+    ``rows`` are raw matches each holding ``ability_upgrades_arr``; talents are
+    excluded from the skill order and tallied separately per talent level.
+    """
+    level_counts: list[dict[int, int]] = [defaultdict(int) for _ in range(18)]
+    talent_counts: dict[int, dict[int, int]] = {10: defaultdict(int), 15: defaultdict(int),
+                                                20: defaultdict(int), 25: defaultdict(int)}
+    games = 0
+
+    for row in rows:
+        arr = row.get("ability_upgrades_arr") or []
+        if not arr:
+            continue
+        games += 1
+        for index, ability_id in enumerate(arr):
+            ability_id = int(ability_id)
+            level = index + 1
+            if _is_talent(ability_id, ability_names):
+                if level in talent_counts:
+                    talent_counts[level][ability_id] += 1
+                continue
+            if level <= 18:
+                level_counts[level - 1][ability_id] += 1
+
+    order = []
+    for level in range(18):
+        counts = level_counts[level]
+        if not counts:
+            order.append(None)
+            continue
+        top_id = max(counts, key=counts.get)
+        order.append(
+            {
+                "level": level + 1,
+                "ability_id": top_id,
+                "name": _humanize_ability(ability_names.get(top_id, str(top_id))),
+                "img": (ability_meta.get(top_id) or {}).get("img"),
+                "picks": counts[top_id],
+            }
+        )
+
+    talents = []
+    for tier in (10, 15, 20, 25):
+        counts = talent_counts[tier]
+        if not counts:
+            continue
+        total = sum(counts.values())
+        options = []
+        for ability_id, picks in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:4]:
+            meta = ability_meta.get(ability_id) or {}
+            dname = meta.get("dname")
+            if dname:
+                label = _clean_talent(str(dname))
+            else:
+                raw = ability_names.get(ability_id, "")
+                label = _humanize_ability(raw) if raw else f"Talent #{ability_id}"
+            options.append(
+                {
+                    "ability_id": ability_id,
+                    "name": label,
+                    "img": meta.get("img"),
+                    "picks": picks,
+                    "share": round(100.0 * picks / total, 1) if total else 0.0,
+                }
+            )
+        talents.append({"tier": tier, "options": options})
+
+    return {"games": games, "order": order, "talents": talents}
+
+
 def match_summary(detail: MatchDetail) -> dict:
     """Structure a parsed match for the viewer panel."""
     match = detail.match
