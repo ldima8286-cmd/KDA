@@ -376,3 +376,39 @@ class ServiceOfflineTests(unittest.TestCase):
         self.assertEqual(data["a"]["player"]["account_id"], 1)
         self.assertEqual(data["b"]["career"]["winrate"], 0.0)
         service.close()
+
+    def test_snapshot_store_roundtrip(self):
+        import tempfile
+        from pathlib import Path
+        from kda.core.store import SnapshotStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SnapshotStore(Path(tmp) / "s.db")
+            store.save("dota2:meta", {"count": 3})
+            entry = store.load("dota2:meta")
+            self.assertEqual(entry["value"]["count"], 3)
+            self.assertIn("dota2:meta", store.keys())
+            store.clear()
+            self.assertIsNone(store.load("dota2:meta"))
+            store.close()
+
+    def test_service_offline_fallback(self):
+        import tempfile
+        from pathlib import Path
+        from kda.core.store import SnapshotStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            service = KdaService(store=SnapshotStore(Path(tmp) / "s.db"))
+            service._adapters["dota2"] = Dota2Adapter()
+            service._adapters["dota2"].client = make_client(
+                {"/proMatches": [{"match_id": 1, "radiant_win": True}], "/teams": [], "/proPlayers": []}
+            )
+            first = service.pro_scene()
+            self.assertTrue(first["matches"])
+            self.assertFalse(service.offline)
+
+            service._adapters["dota2"].client = make_client({})
+            second = service.pro_scene()
+            self.assertEqual(second["matches"][0]["match_id"], 1)
+            self.assertTrue(service.offline)
+            service.close()

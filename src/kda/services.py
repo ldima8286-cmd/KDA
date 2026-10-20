@@ -10,15 +10,18 @@ from typing import Any
 from .adapters.base import GameAdapter
 from .adapters.dota2 import Dota2Adapter
 from .analytics import meta_hub, skill_lab
+from .core.store import SnapshotStore
 
 _DEFAULT_TTL = 600.0
 
 
 class KdaService:
-    def __init__(self, ttl: float = _DEFAULT_TTL) -> None:
+    def __init__(self, ttl: float = _DEFAULT_TTL, store: SnapshotStore | None = None) -> None:
         self._adapters: dict[str, GameAdapter] = {
             Dota2Adapter.slug: Dota2Adapter(ttl=ttl),
         }
+        self._store = store if store is not None else self._default_store()
+        self._offline = False
 
     # --- registry ---
 
@@ -107,6 +110,19 @@ class KdaService:
         return data
 
     def pro_scene(self, game: str = "dota2") -> dict[str, Any]:
+        try:
+            data = self._pro_scene(game)
+        except Exception as exc:  # noqa: BLE001 - fall back to the last snapshot
+            cached = self._cached("pro_scene", game)
+            if cached is None:
+                raise
+            self._offline = True
+            return cached
+        self._offline = False
+        self._save("pro_scene", game, data)
+        return data
+
+    def _pro_scene(self, game: str) -> dict[str, Any]:
         adapter = self.adapter(game)
         matches = [skill_lab.pro_match_from_raw(m) for m in adapter.pro_matches()]
         teams = sorted(
@@ -116,6 +132,35 @@ class KdaService:
         )
         players = [skill_lab.pro_player_from_raw(p) for p in adapter.pro_players()]
         return {"matches": matches, "teams": teams[:100], "players": players}
+
+    # --- offline snapshots ---
+
+    @staticmethod
+    def _default_store() -> SnapshotStore | None:
+        try:
+            return SnapshotStore()
+        except Exception:  # noqa: BLE001 - disk may be read-only
+            return None
+
+    def _save(self, name: str, game: str, payload: Any) -> None:
+        if self._store is not None:
+            try:
+                self._store.save(f"{game}:{name}", payload)
+            except Exception:  # noqa: BLE001 - snapshots are best-effort
+                pass
+
+    def _cached(self, name: str, game: str) -> Any | None:
+        if self._store is None:
+            return None
+        try:
+            entry = self._store.load(f"{game}:{name}")
+        except Exception:  # noqa: BLE001
+            return None
+        return entry["value"] if entry else None
+
+    @property
+    def offline(self) -> bool:
+        return self._offline
 
     def _hero_names(self, game: str) -> dict[int, str]:
         cached = getattr(self, "_hero_name_cache", None)
@@ -128,7 +173,17 @@ class KdaService:
         return cached
 
     def meta(self, game: str = "dota2") -> dict[str, Any]:
-        return meta_hub.build_meta(self.adapter(game).heroes())
+        try:
+            data = meta_hub.build_meta(self.adapter(game).heroes())
+        except Exception:  # noqa: BLE001 - fall back to the last snapshot
+            cached = self._cached("meta", game)
+            if cached is None:
+                raise
+            self._offline = True
+            return cached
+        self._offline = False
+        self._save("meta", game, data)
+        return data
 
     def game_modes(self, game: str = "dota2") -> dict[int, str]:
         adapter = self.adapter(game)
@@ -153,3 +208,5 @@ class KdaService:
     def close(self) -> None:
         for adapter in self._adapters.values():
             adapter.close()
+        if self._store is not None:
+            self._store.close()
