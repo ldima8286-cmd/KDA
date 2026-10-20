@@ -353,3 +353,26 @@ class ServiceOfflineTests(unittest.TestCase):
         self.assertEqual(scene["teams"][0]["winrate"], 75.0)
         self.assertEqual(scene["players"][0]["name"], "N")
         service.close()
+
+    def test_service_compare(self):
+        service = KdaService()
+        adapter = Dota2Adapter()
+        adapter.client = make_client(
+            {
+                "/players/1": {"profile": {"account_id": 1, "personaname": "A", "rank_tier": 50}, "rank_tier": 50},
+                "/players/2": {"profile": {"account_id": 2, "personaname": "B"}, "rank_tier": None},
+                "/players/1/recentMatches": [{"match_id": 1, "hero_id": 1, "player_slot": 0, "radiant_win": True,
+                                              "duration": 100, "game_mode": 1, "lobby_type": 0, "start_time": 1,
+                                              "kills": 1, "deaths": 0, "assists": 1, "gold_per_min": 100,
+                                              "xp_per_min": 100}],
+                "/players/2/recentMatches": [],
+                "/players/1/wl": {"win": 1, "lose": 0}, "/players/1/totals": [], "/players/1/heroes": [],
+                "/players/2/wl": {"win": 0, "lose": 1}, "/players/2/totals": [], "/players/2/heroes": [],
+                "/heroes": [{"id": 1, "localized_name": "Anti-Mage"}],
+            }
+        )
+        service._adapters["dota2"] = adapter
+        data = service.compare(1, 2)
+        self.assertEqual(data["a"]["player"]["account_id"], 1)
+        self.assertEqual(data["b"]["career"]["winrate"], 0.0)
+        service.close()

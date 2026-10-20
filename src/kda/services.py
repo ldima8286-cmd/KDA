@@ -79,6 +79,17 @@ class KdaService:
         requester = getattr(adapter, "request_parse", None)
         return bool(requester(match_id)) if callable(requester) else False
 
+    def compare(self, id_a: int, id_b: int, game: str = "dota2") -> dict[str, Any]:
+        adapter = self.adapter(game)
+        career_a = skill_lab.career_from_stats(adapter.career_stats(id_a))
+        career_b = skill_lab.career_from_stats(adapter.career_stats(id_b))
+        prof_a = skill_lab.build_profile(adapter.player(id_a), adapter.recent_matches(id_a, 20))
+        prof_b = skill_lab.build_profile(adapter.player(id_b), adapter.recent_matches(id_b, 20))
+        return {
+            "a": {**prof_a, "career": career_a},
+            "b": {**prof_b, "career": career_b},
+        }
+
     def hero_detail(self, hero_id: int, game: str = "dota2") -> dict[str, Any]:
         adapter = self.adapter(game)
         raw = adapter.hero_detail(hero_id)
