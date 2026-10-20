@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QButtonGroup,
 )
 
 from ...format import fmt_int
@@ -93,31 +94,104 @@ class HeroPanel(QWidget):
         content.addLayout(split)
 
         build_panel = Panel("Раскачка способностей", "порядок по уровням")
-        build_row = QHBoxLayout()
-        build_row.setSpacing(6)
-        build_row.addStretch(1)
-        self._build_row = build_row
-        build_panel.add_layout(build_row)
+        filt = QHBoxLayout()
+        filt.setSpacing(6)
+        filt.addStretch(1)
+        self._lane_group = QButtonGroup(self)
+        self._lane_group.setExclusive(True)
+        for key, label in (("all", "Все"), ("safe", "Сайд"), ("mid", "Мид"), ("off", "Оффлейн")):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setProperty("ghost", True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setProperty("role_key", key)
+            self._lane_group.addButton(btn)
+            filt.addWidget(btn)
+        self._lane_group.buttons()[0].setChecked(True)
+        self._role_group = QButtonGroup(self)
+        self._role_group.setExclusive(True)
+        for key, label in (("all", "Все роли"), ("core", "Кора"), ("support", "Саппорт")):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setProperty("ghost", True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setProperty("role_key", key)
+            self._role_group.addButton(btn)
+            filt.addWidget(btn)
+        self._role_group.buttons()[0].setChecked(True)
+        self._lane_group.buttonClicked.connect(lambda *_: self._apply_build_filter())
+        self._role_group.buttonClicked.connect(lambda *_: self._apply_build_filter())
+        build_panel.add_layout(filt)
+
+        build_grid = QGridLayout()
+        build_grid.setHorizontalSpacing(10)
+        build_grid.setVerticalSpacing(8)
+        self._build_grid = build_grid
+        self._build_container = QWidget()
+        self._build_container.setLayout(build_grid)
+        build_panel.add(self._build_container)
+
         self._build_note = QLabel("Нет данных")
         self._build_note.setProperty("empty", True)
         build_panel.add(self._build_note)
         content.addWidget(build_panel)
 
         talents_panel = Panel("Таланты", "самые популярные")
+        t_filt = QHBoxLayout()
+        t_filt.setSpacing(6)
+        t_filt.addStretch(1)
+        self._talent_lane = QButtonGroup(self)
+        self._talent_lane.setExclusive(True)
+        for key, label in (("all", "Все"), ("safe", "Сайд"), ("mid", "Мид"), ("off", "Оффлейн")):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setProperty("ghost", True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setProperty("role_key", key)
+            self._talent_lane.addButton(btn)
+            t_filt.addWidget(btn)
+        self._talent_lane.buttons()[0].setChecked(True)
+        self._talent_role = QButtonGroup(self)
+        self._talent_role.setExclusive(True)
+        for key, label in (("all", "Все роли"), ("core", "Кора"), ("support", "Саппорт")):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setProperty("ghost", True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setProperty("role_key", key)
+            self._talent_role.addButton(btn)
+            t_filt.addWidget(btn)
+        self._talent_role.buttons()[0].setChecked(True)
+        self._talent_lane.buttonClicked.connect(lambda *_: self._apply_build_filter())
+        self._talent_role.buttonClicked.connect(lambda *_: self._apply_build_filter())
+        talents_panel.add_layout(t_filt)
+
         talents_grid = QGridLayout()
-        talents_grid.setHorizontalSpacing(16)
-        talents_grid.setVerticalSpacing(8)
-        self._talent_rows = {}
-        for i, tier in enumerate(_TALENT_TIERS):
-            lab = QLabel(f"Ур. {tier}")
-            lab.setProperty("statLabel", True)
-            host = QWidget()
-            host_lay = QVBoxLayout(host)
-            host_lay.setContentsMargins(0, 0, 0, 0)
-            host_lay.setSpacing(4)
-            self._talent_rows[tier] = host
-            talents_grid.addWidget(lab, i, 0)
-            talents_grid.addWidget(host, i, 1)
+        talents_grid.setHorizontalSpacing(18)
+        talents_grid.setVerticalSpacing(10)
+        self._talent_boxes: dict[int, QWidget] = {}
+        self._talent_labels: dict[int, QLabel] = {}
+        self._talent_bars: dict[int, object] = {}
+        for row, tier in enumerate(_TALENT_TIERS):
+            tier_lab = QLabel(f"Тир {tier}")
+            tier_lab.setProperty("panelTitle", True)
+            talents_grid.addWidget(tier_lab, row, 0, 1, 2)
+            for col in (0, 1):
+                box = QWidget()
+                box.setProperty("role", "panel2")
+                lay = QHBoxLayout(box)
+                lay.setContentsMargins(10, 8, 10, 8)
+                lay.setSpacing(10)
+                name = QLabel("—")
+                name.setWordWrap(True)
+                lay.addWidget(name, 1)
+                share = QLabel("0%")
+                share.setProperty("mono", True)
+                lay.addWidget(share)
+                self._talent_boxes[(tier, col)] = box
+                self._talent_labels[(tier, col)] = name
+                box.hide()
+                talents_grid.addWidget(box, row + 1, col)
         talents_panel.add_layout(talents_grid)
         self._talents_note = QLabel("Нет данных")
         self._talents_note.setProperty("empty", True)
@@ -186,50 +260,75 @@ class HeroPanel(QWidget):
                 color=C["win"] if wr >= 50 else C["loss"],
             )
 
-        items = data.get("items") or {}
-        for key, _label in _PHASES:
-            host = self._item_rows[key]
-            lay = host.layout()
-            while lay.count() > 1:
-                item = lay.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
-            for meta in items.get(key) or []:
-                lay.insertWidget(lay.count() - 1, self._item_tile(meta))
-
-        self._fill_build((data.get("build") or {}).get("order") or [], data.get("build") or {})
-        self._fill_talents((data.get("build") or {}).get("talents") or [])
+        self._build_data = data.get("build") or {}
+        self._apply_build_filter()
 
         self._body.show()
         self.empty.hide()
 
-    def _fill_build(self, order: list[dict[str, Any]], build: dict[str, Any]) -> None:
-        lay = self._build_row
-        while lay.count() > 1:
-            item = lay.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+    def _checked_key(self, group: QButtonGroup) -> str:
+        btn = group.checkedButton()
+        if btn is None:
+            return "all"
+        return btn.property("role_key") or "all"
+
+    def _group_key(self) -> str:
+        lane = self._checked_key(self._lane_group)
+        role = self._checked_key(self._role_group)
+        if role == "all":
+            return lane if lane != "all" else "all"
+        if lane == "all":
+            return role
+        return f"{lane}_{role}"
+
+    def _apply_build_filter(self) -> None:
+        build = getattr(self, "_build_data", {}) or {}
+        groups = build.get("groups") or {}
+        key = self._group_key()
+        data_b = groups.get(key) if key != "all" else None
+        if data_b is None and key != "all":
+            lane = self._checked_key(self._lane_group)
+            if lane != "all":
+                data_b = groups.get(lane)
+        if data_b is None:
+            data_b = build
+        self._fill_build_grid(data_b.get("order") or [], data_b)
+        self._fill_talents_grid(data_b.get("talents") or [])
+
+    def _fill_build_grid(self, order: list[dict[str, Any]], build: dict[str, Any]) -> None:
+        grid = self._build_grid
+        while grid.count():
+            item = grid.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
         entries = [e for e in order if e]
         games = build.get("games") or 0
         self._build_note.setVisible(not entries)
         if games:
-            self._build_note.setText(f"На основе {fmt_int(games)} распарсенных матчей")
-        for entry in entries:
-            lay.insertWidget(lay.count() - 1, self._ability_tile(entry))
+            self._build_note.setText(f"На основе {fmt_int(games)} матчей")
+        else:
+            self._build_note.setText("Нет данных")
+        for idx, entry in enumerate(entries):
+            tile = self._ability_tile(entry)
+            grid.addWidget(tile, idx // 9, idx % 9)
 
-    def _fill_talents(self, talents: list[dict[str, Any]]) -> None:
+    def _fill_talents_grid(self, talents: list[dict[str, Any]]) -> None:
         by_tier = {t["tier"]: t.get("options") or [] for t in talents}
         any_data = False
-        for tier, host in self._talent_rows.items():
-            lay = host.layout()
-            while lay.count():
-                item = lay.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
-            options = by_tier.get(tier) or []
-            for opt in options[:2]:
-                any_data = True
-                lay.addWidget(self._talent_tile(opt))
+        for tier in _TALENT_TIERS:
+            for col in (0, 1):
+                box = self._talent_boxes[(tier, col)]
+                name = self._talent_labels[(tier, col)]
+                options = by_tier.get(tier) or []
+                if col < len(options):
+                    opt = options[col]
+                    any_data = True
+                    name.setText(opt.get("name") or "—")
+                    box.setToolTip(f"{opt.get('picks', 0)} взятий · {opt.get('share', 0)}%")
+                    box.show()
+                else:
+                    box.hide()
         self._talents_note.setVisible(not any_data)
 
     @staticmethod

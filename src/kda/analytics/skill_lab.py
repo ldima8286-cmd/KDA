@@ -168,16 +168,31 @@ def _clean_talent(text: str) -> str:
     return cleaned.strip() or "Talent"
 
 
-def hero_build_from_raw(
+LANE_NAMES = {1: "safe", 2: "mid", 3: "off", 4: "jungle"}
+CORE_GPM = 450
+
+
+def _lane_role_of(row: dict) -> str:
+    lane = row.get("lane_role")
+    try:
+        lane = int(lane)
+    except (TypeError, ValueError):
+        return "unknown"
+    return LANE_NAMES.get(lane, "unknown")
+
+
+def _is_core(row: dict) -> bool:
+    try:
+        return int(row.get("gold_per_min") or 0) >= CORE_GPM
+    except (TypeError, ValueError):
+        return False
+
+
+def _aggregate(
     rows: list[dict],
     ability_names: dict[int, str],
     ability_meta: dict[int, dict],
 ) -> dict:
-    """Most-common skill order and talent choices from parsed ability arrays.
-
-    ``rows`` are raw matches each holding ``ability_upgrades_arr``; talents are
-    excluded from the skill order and tallied separately per talent level.
-    """
     level_counts: list[dict[int, int]] = [defaultdict(int) for _ in range(18)]
     talent_counts: dict[int, dict[int, int]] = {10: defaultdict(int), 15: defaultdict(int),
                                                 20: defaultdict(int), 25: defaultdict(int)}
@@ -188,15 +203,17 @@ def hero_build_from_raw(
         if not arr:
             continue
         games += 1
-        for index, ability_id in enumerate(arr):
+        skill_slot = 0
+        for ability_id in arr:
             ability_id = int(ability_id)
-            level = index + 1
             if _is_talent(ability_id, ability_names):
-                if level in talent_counts:
-                    talent_counts[level][ability_id] += 1
+                hero_level = skill_slot + 1
+                if hero_level in talent_counts:
+                    talent_counts[hero_level][ability_id] += 1
                 continue
-            if level <= 18:
-                level_counts[level - 1][ability_id] += 1
+            if skill_slot < 18:
+                level_counts[skill_slot][ability_id] += 1
+            skill_slot += 1
 
     order = []
     for level in range(18):
@@ -212,6 +229,7 @@ def hero_build_from_raw(
                 "name": _humanize_ability(ability_names.get(top_id, str(top_id))),
                 "img": (ability_meta.get(top_id) or {}).get("img"),
                 "picks": counts[top_id],
+                "share": round(100.0 * counts[top_id] / games, 1) if games else 0.0,
             }
         )
 
@@ -222,7 +240,7 @@ def hero_build_from_raw(
             continue
         total = sum(counts.values())
         options = []
-        for ability_id, picks in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:4]:
+        for ability_id, picks in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:2]:
             meta = ability_meta.get(ability_id) or {}
             dname = meta.get("dname")
             if dname:
@@ -242,6 +260,42 @@ def hero_build_from_raw(
         talents.append({"tier": tier, "options": options})
 
     return {"games": games, "order": order, "talents": talents}
+
+
+def hero_build_from_raw(
+    rows: list[dict],
+    ability_names: dict[int, str],
+    ability_meta: dict[int, dict],
+) -> dict:
+    """Skill order and talents overall plus a lane/role breakdown.
+
+    Players often take a hero on an off-role, so we return the overall build
+    alongside per-lane (safe/mid/off) and per-role (core/support) slices. Each
+    slice carries its own match count so the UI can flag small samples.
+    """
+    overall = _aggregate(rows, ability_names, ability_meta)
+
+    groups: dict[str, dict] = {}
+    for lane in ("safe", "mid", "off"):
+        lane_rows = [r for r in rows if _lane_role_of(r) == lane]
+        if lane_rows:
+            groups[lane] = _aggregate(lane_rows, ability_names, ability_meta)
+        core_rows = [r for r in lane_rows if _is_core(r)]
+        support_rows = [r for r in lane_rows if not _is_core(r)]
+        if core_rows:
+            groups[f"{lane}_core"] = _aggregate(core_rows, ability_names, ability_meta)
+        if support_rows:
+            groups[f"{lane}_support"] = _aggregate(support_rows, ability_names, ability_meta)
+
+    core_rows = [r for r in rows if _is_core(r)]
+    support_rows = [r for r in rows if not _is_core(r)]
+    if core_rows:
+        groups["core"] = _aggregate(core_rows, ability_names, ability_meta)
+    if support_rows:
+        groups["support"] = _aggregate(support_rows, ability_names, ability_meta)
+
+    return {"games": overall["games"], "order": overall["order"],
+            "talents": overall["talents"], "groups": groups}
 
 
 def match_summary(detail: MatchDetail) -> dict:
