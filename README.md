@@ -29,6 +29,18 @@ The win-rate trend chart is hand-drawn with QPainter — no charting dependency.
 
 ## Quick start
 
+### Download (one click)
+
+Prebuilt binaries for Linux and Windows are attached to every
+[GitHub Release](https://github.com/ldima8286-cmd/KDA/releases). No Python
+toolchain required:
+
+- **Linux** — `KDA-linux-x86_64.tar.gz`: extract, then run `./KDA`
+  (`chmod +x KDA` if your file manager dropped the executable bit).
+- **Windows** — `KDA-windows-x86_64.zip`: extract, then double-click `KDA.exe`.
+
+### Run from source
+
 Requirements: Python 3.11+ (3.13 recommended).
 
 ```bash
@@ -49,6 +61,18 @@ python -m venv .venv
 PYTHONPATH=src .venv/bin/python -m kda
 ```
 
+### Build the binary yourself
+
+```bash
+./scripts/build-linux.sh      # -> dist/KDA
+scripts\build-windows.bat     # -> dist\KDA.exe
+```
+
+Both scripts create/refresh `.venv`, install `requirements-build.txt` and run
+PyInstaller with `packaging/kda.spec`, producing a single self-contained
+executable (`onefile`). CI does the same on every `v*` tag and attaches the
+binaries to the release.
+
 > **Linux note:** hero thumbnails and avatars load through `QtNetwork`, which
 > links against Kerberos on some distros. If icons do not appear, install your
 > runtime (`krb5-libs` / `libgssapi-krb5-2`). The app still runs without it,
@@ -57,12 +81,17 @@ PYTHONPATH=src .venv/bin/python -m kda
 ## Architecture
 
 ```
+main.py            launcher entry point (run scripts + PyInstaller)
+packaging/kda.spec PyInstaller spec (onefile, Linux + Windows)
+scripts/           build-linux.sh · build-windows.bat
+.github/workflows/ ci.yml (tests) · release.yml (binaries on v* tags)
 src/kda/
   core/            models.py (unified entities) · cache.py (TTL cache)
   adapters/
     base.py        GameAdapter interface
     dota2/         opendota.py (sync HTTP client) · normalize.py
   analytics/       skill_lab.py · meta_hub.py   (game-agnostic analysis)
+  format.py        display formatters (no Qt, unit-tested)
   services.py      KdaService — facade the UI talks to
   ui/
     theme.py       dark palette as a Qt stylesheet
