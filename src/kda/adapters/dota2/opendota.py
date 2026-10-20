@@ -162,10 +162,14 @@ class OpenDotaClient:
                 time.sleep(1.0 * (attempt + 1))
         raise OpenDotaError(f"explorer query failed: {last_exc}")
 
-    def hero_skill_build(self, hero_id: int, sample: int = 4000) -> list[dict[str, Any]]:
-        """Raw ability-upgrade arrays for a hero, from parsed games."""
+    def hero_skill_build(self, hero_id: int, sample: int = 8000) -> list[dict[str, Any]]:
+        """Raw ability-upgrade arrays plus lane/gold, from parsed games.
+
+        ``lane_role`` is 1=safe, 2=mid, 3=off, 4=jungle; ``gold_per_min`` lets
+        us split core vs support within each lane.
+        """
         query = (
-            "SELECT ability_upgrades_arr FROM player_matches "
+            "SELECT ability_upgrades_arr, lane_role, gold_per_min FROM player_matches "
             f"WHERE hero_id = {int(hero_id)} AND ability_upgrades_arr IS NOT NULL "
             f"LIMIT {int(sample)}"
         )
