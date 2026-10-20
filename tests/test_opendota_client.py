@@ -312,3 +312,23 @@ class ServiceOfflineTests(unittest.TestCase):
         p = pro_player_from_raw({"account_id": 7, "name": "N", "team_name": "T"})
         self.assertEqual(p["name"], "N")
         self.assertEqual(p["team_name"], "T")
+
+    def test_service_hero_detail(self):
+        service = KdaService()
+        adapter = Dota2Adapter()
+        adapter.client = make_client(
+            {
+                "/heroes": [{"id": 1, "localized_name": "Anti-Mage"}],
+                "/heroStats": HERO_STATS,
+                "/heroes/1/matchups": [{"hero_id": 2, "games_played": 10, "wins": 4}],
+                "/heroes/1/durations": [{"duration_bin": 1800, "games_played": 10, "wins": 6}],
+                "/heroes/1/itemPopularity": {"start_game_items": {"63": 9}, "early_game_items": {}},
+                "/constants/items": {"power_treads": {"id": 63, "dname": "Power Treads", "img": "/x.png"}},
+            }
+        )
+        service._adapters["dota2"] = adapter
+        data = service.hero_detail(1)
+        self.assertEqual(data["name"], "Anti-Mage")
+        self.assertEqual(data["durations"][0]["winrate"], 60.0)
+        self.assertEqual(data["items"]["start_game_items"][0]["name"], "Power Treads")
+        service.close()

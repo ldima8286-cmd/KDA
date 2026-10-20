@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from ..services import KdaService
 from . import workers
-from .panels import HomePanel, MatchPanel, MetaHubPanel, SkillLabPanel
+from .panels import HeroPanel, HomePanel, MatchPanel, MetaHubPanel, SkillLabPanel
 from .theme import C
 
 _NAV = (("home", "Обзор"), ("player", "Skill Lab"), ("meta", "Meta Hub"))
@@ -136,15 +136,19 @@ class MainWindow(QMainWindow):
         self.skill_lab_panel = SkillLabPanel()
         self.skill_lab_panel.matchRequested.connect(self._load_match)
         self.meta_hub_panel = MetaHubPanel()
+        self.meta_hub_panel.heroRequested.connect(self._load_hero)
         self.match_panel = MatchPanel()
         self.match_panel.backRequested.connect(lambda: self.show_panel("player"))
         self.match_panel.parseRequested.connect(self._request_parse)
+        self.hero_panel = HeroPanel()
+        self.hero_panel.backRequested.connect(lambda: self.show_panel("meta"))
 
         stack = QStackedWidget()
         stack.addWidget(self.home_panel)       # index 0
         stack.addWidget(self.skill_lab_panel)  # index 1
         stack.addWidget(self.meta_hub_panel)   # index 2
         stack.addWidget(self.match_panel)      # index 3
+        stack.addWidget(self.hero_panel)       # index 4
         self._stack = stack
         return stack
 
@@ -161,7 +165,7 @@ class MainWindow(QMainWindow):
     # ---------- navigation ----------
 
     def show_panel(self, key: str) -> None:
-        index = {"home": 0, "player": 1, "meta": 2, "match": 3}[key]
+        index = {"home": 0, "player": 1, "meta": 2, "match": 3, "hero": 4}[key]
         self._stack.setCurrentIndex(index)
         if key in self._nav_buttons:
             self._nav_buttons[key].setChecked(True)
@@ -268,6 +272,22 @@ class MainWindow(QMainWindow):
     def _on_parse_done(self, ok: bool) -> None:
         self.match_panel.show_parse_result(ok)
         self.set_status("парсинг запрошен" if ok else "парсинг недоступен", "ok" if ok else "err")
+
+    def _load_hero(self, hero_id: int) -> None:
+        self.show_panel("hero")
+        self.hero_panel.clear()
+        self.set_status(f"загрузка героя {hero_id}…", "busy")
+        workers.submit(
+            self.service.hero_detail,
+            self._on_hero,
+            self._on_error,
+            None,
+            hero_id,
+        )
+
+    def _on_hero(self, data: dict) -> None:
+        self.hero_panel.set_hero(data)
+        self.set_status(f"герой загружен · {data.get('name')}", "ok")
 
     # ---------- lifecycle ----------
 
