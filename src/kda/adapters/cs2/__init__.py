@@ -1,8 +1,11 @@
-"""CS2 adapter backed by the Steam Web API (requires a free API key).
+"""CS2 adapter.
 
-Set the key in the environment as ``KDA_STEAM_KEY``. Without a key the adapter
-still serves a bundled offline reference (maps and Premier ranks) so the Meta
-Hub works, but live player data is unavailable.
+Live data comes from the Steam Web API (free key in ``KDA_STEAM_KEY``): player
+profiles and vanity resolution. CS2 exposes no public match history or pick/win
+statistics without a commercial data provider, so the meta/pro-scene surfaces
+are served from a clearly-labelled bundled snapshot (see ``data``). This keeps
+the Meta Hub and Pro Scene meaningful out of the box and lets a live
+provider be plugged in later without touching the UI.
 """
 from __future__ import annotations
 
@@ -12,46 +15,18 @@ from typing import Any
 import httpx
 
 from ...core.cache import TTLCache
-from ...core.models import HeroMeta, Match, MatchPlayer, Player
+from ...core.models import HeroMeta, Match, Player
 from ..base import GameAdapter
+from . import data as cs2data
 
 _STEAM_API = "https://api.steampowered.com"
+_REFERENCE_NOTE = "bundled reference snapshot"
 
-_PREMIER_RANKS = [
-    (0, "Без ранга"),
-    (5000, "Silver I"),
-    (10000, "Silver II"),
-    (15000, "Silver III"),
-    (20000, "Gold I"),
-    (25000, "Gold II"),
-    (30000, "Gold III"),
-    (35000, "Platinum I"),
-    (40000, "Platinum II"),
-    (45000, "Platinum III"),
-    (50000, "Diamond I"),
-    (55000, "Diamond II"),
-    (60000, "Diamond III"),
-    (65000, "Master"),
-    (70000, "Master+"),
-    (75000, "Legendary"),
-    (80000, "Legendary+"),
-    (85000, "Global Elite"),
-]
-
-_MAPS = [
-    "Ancient", "Anubis", "Dust2", "Inferno", "Mirage",
-    "Nuke", "Overpass", "Train", "Vertigo",
-]
-
-
-def premier_rank(rating: int) -> str:
-    label = _PREMIER_RANKS[0][1]
-    for threshold, name in _PREMIER_RANKS:
-        if rating >= threshold:
-            label = name
-        else:
-            break
-    return label
+# Re-exported reference data / helpers for callers and tests.
+_MAPS = cs2data.MAPS
+_PREMIER_RANKS = cs2data.PREMIER_RANKS
+premier_rank = cs2data.premier_rank
+premier_color = cs2data.premier_color
 
 
 class SteamClient:
@@ -60,17 +35,22 @@ class SteamClient:
         self.cache = TTLCache(ttl=ttl)
         self._client = httpx.Client(base_url=_STEAM_API, timeout=httpx.Timeout(20.0))
 
+    @property
+    def available(self) -> bool:
+        return bool(self.key)
+
     def _get(self, path: str, **params: Any) -> Any:
         if not self.key:
             raise RuntimeError("KDA_STEAM_KEY is not set")
         params["key"] = self.key
-        cached = self.cache.get(path + repr(sorted(params.items())))
+        key = path + repr(sorted(params.items()))
+        cached = self.cache.get(key)
         if cached is not None:
             return cached
         response = self._client.get(path, params=params)
         response.raise_for_status()
         data = response.json()
-        self.cache.set(path + repr(sorted(params.items())), data)
+        self.cache.set(key, data)
         return data
 
     def player_summaries(self, steam_id: int) -> dict[str, Any]:
@@ -90,47 +70,96 @@ class CS2Adapter(GameAdapter):
     def __init__(self, ttl: float = 300.0) -> None:
         self.client = SteamClient(ttl=ttl)
 
-    # --- queries ---
+    @property
+    def live(self) -> bool:
+        return self.client.available
+
+    def hero_image(self, hero_id: int) -> str | None:
+        return None
+
+    def hero_icon(self, hero_id: int) -> str | None:
+        return None
+
+    def item_info(self, item_id: int) -> dict[str, str]:
+        name = cs2data.WEAPONS.get(item_id)
+        return {"name": name or "", "img": ""}
+
+    def constants_map(self, name: str) -> dict[int, str]:
+        if name in ("map", "maps"):
+            return {i + 1: m["name"] for i, m in enumerate(cs2data.MAPS)}
+        if name in ("weapon", "weapons"):
+            return dict(cs2data.WEAPONS)
+        return {}
 
     def search(self, query: str) -> list[Player]:
-        raw = self.client.resolve_vanity(query)
+        text = (query or "").strip()
+        if not text:
+            return []
+        if text.isdigit() and len(text) >= 6:
+            return [self.player(int(text))]
+        if not self.live:
+            raise RuntimeError(
+                "Поиск игроков CS2 требует ключа Steam (KDA_STEAM_KEY). "
+                f"Доступна офлайн-мета: {_REFERENCE_NOTE}."
+            )
+        raw = self.client.resolve_vanity(text)
         steam_id = raw.get("response", {}).get("steamid")
         if not steam_id:
             return []
         return [self.player(int(steam_id))]
 
     def player(self, account_id: int) -> Player:
-        raw = self.client.player_summaries(account_id)
-        players = raw.get("response", {}).get("players") or [{}]
-        info = players[0]
-        return Player(
-            game=self.slug,
-            account_id=account_id,
-            name=info.get("personaname") or str(account_id),
-            avatar=info.get("avatarfull"),
-        )
+        if self.live:
+            raw = self.client.player_summaries(account_id)
+            players = raw.get("response", {}).get("players") or [{}]
+            info = players[0]
+            return Player(
+                game=self.slug,
+                account_id=account_id,
+                name=info.get("personaname") or str(account_id),
+                avatar=info.get("avatarfull"),
+                country=info.get("loccountrycode"),
+                profile_url=info.get("profileurl"),
+            )
+        return Player(game=self.slug, account_id=account_id, name=str(account_id))
 
     def recent_matches(self, account_id: int, limit: int = 20) -> list[Match]:
-        # Live CS2 match history is not exposed by the Steam Web API.
         return []
 
-    def heroes(self) -> list[HeroMeta]:
-        return [
-            HeroMeta(
-                game=self.slug,
-                hero_id=i + 1,
-                name=name,
-                roles=["map"],
-                pro_pick=0,
-                pro_win=0,
-                pub_pick=0,
-                pub_win=0,
-            )
-            for i, name in enumerate(_MAPS)
-        ]
+    def career_stats(self, account_id: int) -> dict[str, Any]:
+        return {"totals": [], "wl": {}, "heroes": []}
 
     def player_stats(self, account_id: int) -> dict[str, Any]:
         return {"player": self.player(account_id).to_dict()}
+
+    def heroes(self) -> list[HeroMeta]:
+        rows: list[HeroMeta] = []
+        for i, m in enumerate(cs2data.MAPS, start=1):
+            meta = cs2data.MAP_META.get(m["name"], {})
+            picks = int(meta.get("picks") or 0)
+            wins = int(meta.get("wins") or 0)
+            rows.append(
+                HeroMeta(
+                    game=self.slug,
+                    hero_id=i,
+                    name=m["name"],
+                    roles=["map"],
+                    pro_pick=picks,
+                    pro_win=wins,
+                    pub_pick=picks,
+                    pub_win=wins,
+                )
+            )
+        return rows
+
+    def pro_matches(self) -> list[dict[str, Any]]:
+        return []
+
+    def pro_players(self) -> list[dict[str, Any]]:
+        return [dict(p) for p in cs2data.PRO_PLAYERS]
+
+    def teams(self) -> list[dict[str, Any]]:
+        return [dict(t) for t in cs2data.PRO_TEAMS]
 
     def close(self) -> None:
         self.client.close()

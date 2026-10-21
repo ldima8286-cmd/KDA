@@ -40,7 +40,7 @@ class ProPanel(QWidget):
         content.setContentsMargins(0, 0, 6, 0)
         content.setSpacing(14)
 
-        matches_panel = Panel("Последние про-матчи", "клик — открыть матч")
+        self._matches_panel = matches_panel = Panel("Последние про-матчи", "клик — открыть матч")
         self.matches_table = make_table(
             ["Команды", "Счёт", "Турнир", "Длит.", "Когда"],
             numeric={1, 3},
@@ -53,12 +53,12 @@ class ProPanel(QWidget):
         split = QHBoxLayout()
         split.setSpacing(14)
 
-        teams_panel = Panel("Топ команд", "по рейтингу")
+        self._teams_panel = teams_panel = Panel("Топ команд", "по рейтингу")
         self.teams_table = make_table(["Команда", "Рейтинг", "W / L", "WR"], numeric={1, 2, 3})
         teams_panel.add(self.teams_table)
         split.addWidget(teams_panel, 1)
 
-        players_panel = Panel("Про-игроки", "клик — открыть профиль")
+        self._players_panel = players_panel = Panel("Про-игроки", "клик — открыть профиль")
         self.players_table = make_table(["Игрок", "Команда", "Страна"], numeric=set(), clickable=True)
         self.players_table.rowClicked.connect(self._on_player_clicked)
         players_panel.add(self.players_table)
@@ -71,6 +71,16 @@ class ProPanel(QWidget):
 
         self._match_ids: list[int] = []
         self._player_ids: list[int] = []
+        self._game = "dota2"
+
+    def set_game(self, game: str) -> None:
+        self._game = game or "dota2"
+        if self._game == "cs2":
+            self._matches_panel.note_label.setText("нет публичных матчей без провайдера")
+            self._teams_panel.note_label.setText("справочный снимок · не live")
+        else:
+            self._matches_panel.note_label.setText("клик — открыть матч")
+            self._teams_panel.note_label.setText("по рейтингу")
 
     def set_scene(self, data: dict[str, Any]) -> None:
         matches = data.get("matches") or []

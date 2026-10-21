@@ -10,6 +10,11 @@ from ..widgets import Panel, hero_cell, make_table, row_id, set_row_id, set_text
 
 _MODES = (("pro", "Pro"), ("pub", "Пабы"))
 
+_LABELS = {
+    "dota2": ("героев", "Герой"),
+    "cs2": ("карт", "Карта"),
+}
+
 
 class MetaHubPanel(QWidget):
     heroRequested = Signal(int)
@@ -18,6 +23,8 @@ class MetaHubPanel(QWidget):
         super().__init__(parent)
         self._meta: dict[str, Any] = {}
         self._mode = "pro"
+        self._game = "dota2"
+        self._headers = ["Герой", "Pro pick", "Pro WR", "Pub pick", "Pub WR", "Роли"]
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(26, 22, 26, 22)
@@ -46,7 +53,7 @@ class MetaHubPanel(QWidget):
         self._panel.add_layout(toolbar)
 
         self._table = make_table(
-            ["Герой", "Pro pick", "Pro WR", "Pub pick", "Pub WR", "Роли"],
+            list(self._headers),
             numeric={1, 2, 3, 4},
             clickable=True,
         )
@@ -60,6 +67,22 @@ class MetaHubPanel(QWidget):
             self.heroRequested.emit(hero_id)
 
     # --- data ---
+
+    def set_game(self, game: str) -> None:
+        game = game or "dota2"
+        if game == self._game:
+            return
+        self._game = game
+        noun, subject = _LABELS.get(game, ("героев", "Герой"))
+        roles = "Тип" if game == "cs2" else "Роли"
+        pick = "Игр" if game == "cs2" else "Pro pick"
+        pick_pub = "Игр" if game == "cs2" else "Pub pick"
+        self._panel.title_label.setText("Мета карт" if game == "cs2" else "Мета героев")
+        self._panel.note_label.setText(f"загрузка…")
+        self._table.setHorizontalHeaderLabels(
+            [subject, pick, "Pro WR", pick_pub, "Pub WR", roles]
+        )
+        self._table.setSortingEnabled(False)
 
     def set_meta(self, meta: dict[str, Any]) -> None:
         self._meta = meta or {}
@@ -89,4 +112,5 @@ class MetaHubPanel(QWidget):
             self._table.setSortingEnabled(True)
             self._table.sortItems(1 if self._mode == "pro" else 3, Qt.SortOrder.DescendingOrder)
 
-        self._panel.note_label.setText(f"{self._meta.get('count', 0)} героев")
+        noun = _LABELS.get(self._game, ("героев", "Герой"))[0]
+        self._panel.note_label.setText(f"{self._meta.get('count', 0)} {noun}")
