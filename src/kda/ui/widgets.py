@@ -192,13 +192,22 @@ class ItemIcon(QFrame):
         side = min(pixmap.width(), pixmap.height())
         x = (pixmap.width() - side) // 2
         y = (pixmap.height() - side) // 2
-        cropped = pixmap.copy(x, y, side, side).scaled(
-            self.SIZE,
-            self.SIZE,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        return _round_pixmap(cropped, max(3, self.SIZE // 6))
+        cropped = pixmap.copy(x, y, side, side)
+        if cropped.width() <= self.SIZE:
+            scaled = cropped.scaled(
+                self.SIZE,
+                self.SIZE,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        else:
+            scaled = cropped.scaled(
+                self.SIZE,
+                self.SIZE,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.FastTransformation,
+            )
+        return _round_pixmap(scaled, max(3, self.SIZE // 6))
 
     def _on_loaded(self, url: str, pixmap: QPixmap) -> None:
         if url == self._url:
