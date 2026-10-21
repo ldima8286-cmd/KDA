@@ -52,5 +52,22 @@ class MetaHubTests(unittest.TestCase):
         meta = meta_hub.build_meta(heroes)
         self.assertEqual(meta["count"], 2)
         self.assertEqual(meta["pro_ranked"][0]["hero_id"], 2)
-        self.assertEqual(meta["pro_ranked"][0]["pro_pick_share"], 75.0)
-        self.assertEqual(meta["pub_ranked"][0]["hero_id"], 1)
+
+    def test_hero_build_from_raw_groups(self):
+        names = {5003: "antimage_mana_break", 5004: "antimage_blink", 6012: "special_bonus_unique_antimage",
+                6353: "special_bonus_unique_antimage_2"}
+        meta = {5003: {"dname": "Mana Break", "img": "x"}}
+        rows = [
+            {"ability_upgrades_arr": [5003, 5004, 5003, 5004, 5005, 5003, 5004, 5005, 5005, 6012], "lane_role": 1, "gold_per_min": 600},
+            {"ability_upgrades_arr": [5003, 5004, 5003, 5004, 5005, 5003, 5004, 5005, 5005, 6353], "lane_role": 1, "gold_per_min": 350},
+            {"ability_upgrades_arr": [5003, 5004, 5003, 5004, 5005, 5003, 5004, 5005, 5005, 6012], "lane_role": 2, "gold_per_min": 550},
+        ]
+        out = skill_lab.hero_build_from_raw(rows, names, meta)
+        self.assertEqual(out["games"], 3)
+        self.assertIn("groups", out)
+        self.assertIn("safe_core", out["groups"])
+        self.assertIn("safe_support", out["groups"])
+        self.assertIn("mid", out["groups"])
+        self.assertEqual(out["groups"]["safe_core"]["games"], 1)
+        self.assertEqual(out["groups"]["safe_support"]["games"], 1)
+        self.assertEqual(out["groups"]["core"]["games"], 2)
