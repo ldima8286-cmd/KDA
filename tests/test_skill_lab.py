@@ -71,3 +71,12 @@ class MetaHubTests(unittest.TestCase):
         self.assertEqual(out["groups"]["safe_core"]["games"], 1)
         self.assertEqual(out["groups"]["safe_support"]["games"], 1)
         self.assertEqual(out["groups"]["core"]["games"], 2)
+
+    def test_hero_build_from_raw_empty_group_fallback(self):
+        names = {5003: "antimage_mana_break"}
+        meta = {}
+        rows = []
+        out = skill_lab.hero_build_from_raw(rows, names, meta)
+        self.assertEqual(out["games"], 0)
+        self.assertEqual(out["talents"], [])
+        self.assertIn("groups", out)
