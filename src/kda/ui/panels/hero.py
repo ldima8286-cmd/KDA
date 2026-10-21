@@ -281,6 +281,18 @@ class HeroPanel(QWidget):
             return role
         return f"{lane}_{role}"
 
+    def _group_label(self, key: str) -> str:
+        lane_map = {"safe": "Сайд", "mid": "Мид", "off": "Оффлейн", "all": "Все"}
+        role_map = {"core": "кор", "support": "саппорт", "all": ""}
+        if key == "all":
+            return "все роли/линии"
+        if "_" in key:
+            lane, role = key.split("_", 1)
+            return f"{lane_map.get(lane, lane)}-{role_map.get(role, role)}"
+        if key in ("core", "support"):
+            return role_map.get(key, key)
+        return lane_map.get(key, key)
+
     def _apply_build_filter(self) -> None:
         build = getattr(self, "_build_data", {}) or {}
         groups = build.get("groups") or {}
@@ -292,10 +304,11 @@ class HeroPanel(QWidget):
                 data_b = groups.get(lane)
         if data_b is None:
             data_b = build
-        self._fill_build_grid(data_b.get("order") or [], data_b)
-        self._fill_talents_grid(data_b.get("talents") or [])
+            key = "all"
+        self._fill_build_grid(data_b.get("order") or [], data_b, key)
+        self._fill_talents_grid(data_b.get("talents") or [], data_b, key)
 
-    def _fill_build_grid(self, order: list[dict[str, Any]], build: dict[str, Any]) -> None:
+    def _fill_build_grid(self, order: list[dict[str, Any]], build: dict[str, Any], key: str = "all") -> None:
         grid = self._build_grid
         while grid.count():
             item = grid.takeAt(0)
@@ -306,14 +319,19 @@ class HeroPanel(QWidget):
         games = build.get("games") or 0
         self._build_note.setVisible(not entries)
         if games:
-            self._build_note.setText(f"На основе {fmt_int(games)} матчей")
+            note = f"На основе {fmt_int(games)} матчей"
+            if key != "all":
+                note += f" · {self._group_label(key)}"
+            if games < 80:
+                note += " • малая выборка"
+            self._build_note.setText(note)
         else:
             self._build_note.setText("Нет данных")
         for idx, entry in enumerate(entries):
             tile = self._ability_tile(entry)
             grid.addWidget(tile, idx // 9, idx % 9)
 
-    def _fill_talents_grid(self, talents: list[dict[str, Any]]) -> None:
+    def _fill_talents_grid(self, talents: list[dict[str, Any]], build: dict[str, Any] | None = None, key: str = "all") -> None:
         by_tier = {t["tier"]: t.get("options") or [] for t in talents}
         any_data = False
         for tier in _TALENT_TIERS:
@@ -330,6 +348,12 @@ class HeroPanel(QWidget):
                 else:
                     box.hide()
         self._talents_note.setVisible(not any_data)
+        if not any_data:
+            return
+        games = (build or {}).get("games") or 0
+        if games and games < 80:
+            self._talents_note.setText("Малая выборка")
+            self._talents_note.show()
 
     @staticmethod
     def _ability_tile(entry: dict[str, Any]) -> QWidget:
