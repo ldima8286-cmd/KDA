@@ -30,6 +30,25 @@ fresh data on every launch when you are online.
   button forces a re-pull. Networking runs off the UI thread, so the window
   never freezes.
 
+## Counter-Strike 2
+
+CS2 is the second adapter, exercising the Universal Engine end-to-end. The app
+switches games from the header combo; the Meta Hub and Pro Scene both adapt
+their labels and content (maps instead of heroes, teams instead of Dota
+leagues).
+
+- **Meta Hub** — the active-duty map pool as a sortable table (plays / win
+  rate / type), served from a clearly-labelled bundled reference snapshot.
+- **Pro Scene** — a top-teams and pro-players reference snapshot. CS2 exposes
+  no public match feed, so the match list is intentionally empty offline.
+- **Live player profiles** — set a free Steam Web API key to resolve and show
+  real Steam profiles: export `KDA_STEAM_KEY` before launching. Without a key
+  the adapter runs fully offline (maps, Premier rank bands, weapons).
+
+> CS2 has no open, keyless match-history or pick/win API. Live pro-scene data
+> requires a commercial provider; the adapter is written so one can be plugged
+> in later without touching the UI.
+
 ## Screens
 
 The UI is a dark esports aesthetic (Dota 2 client + HLTV analytics tables).
@@ -127,7 +146,7 @@ facade.
 
 ## Roadmap
 
-- More games (CS2, League of Legends) via new adapters.
+- More games (League of Legends, Valorant) via new adapters — CS2 ships.
 - Draft/lineup analysis and head-to-head comparisons.
 - Local history + offline snapshots (SQLite).
 - Exportable match reports.

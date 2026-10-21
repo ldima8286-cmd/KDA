@@ -76,9 +76,12 @@ class Panel(QFrame):
             head.addWidget(note_label)
             self._root.addLayout(head)
             self.note_label = note_label
+            self.title_label = title_label
         else:
             self.note_label = QLabel()
             self.note_label.hide()
+            self.title_label = QLabel()
+            self.title_label.hide()
 
         self._root.addLayout(self._content)
 

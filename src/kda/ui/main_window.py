@@ -238,6 +238,8 @@ class MainWindow(QMainWindow):
     def _on_game_changed(self) -> None:
         self._game = self._game_combo.currentData() or "dota2"
         self._pro_loaded = False
+        self.meta_hub_panel.set_game(self._game)
+        self.pro_panel.set_game(self._game)
         self._refresh_meta()
 
     def _on_search(self) -> None:
