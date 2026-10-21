@@ -302,6 +302,11 @@ class HeroPanel(QWidget):
             lane = self._checked_key(self._lane_group)
             if lane != "all":
                 data_b = groups.get(lane)
+        if data_b is None and key != "all":
+            # try the broad role group
+            role = self._checked_key(self._role_group)
+            if role != "all":
+                data_b = groups.get(role)
         if data_b is None:
             data_b = build
             key = "all"
@@ -326,7 +331,11 @@ class HeroPanel(QWidget):
                 note += " • малая выборка"
             self._build_note.setText(note)
         else:
-            self._build_note.setText("Нет данных")
+            if key == "all":
+                self._build_note.setText("Нет данных")
+            else:
+                self._build_note.setText(f"Нет данных для фильтра «{self._group_label(key)}»")
+                self._build_note.show()
         for idx, entry in enumerate(entries):
             tile = self._ability_tile(entry)
             grid.addWidget(tile, idx // 9, idx % 9)
@@ -347,8 +356,16 @@ class HeroPanel(QWidget):
                     box.show()
                 else:
                     box.hide()
-        self._talents_note.setVisible(not any_data)
         if not any_data:
+            self._talents_note.setVisible(True)
+            games = (build or {}).get("games") or 0
+            if games and games < 80:
+                self._talents_note.setText("Малая выборка")
+                return
+            if key != "all":
+                self._talents_note.setText(f"Нет данных для фильтра «{self._group_label(key)}»")
+            else:
+                self._talents_note.setText("Нет данных")
             return
         games = (build or {}).get("games") or 0
         if games and games < 80:
@@ -376,13 +393,30 @@ class HeroPanel(QWidget):
         host = QWidget()
         box = QHBoxLayout(host)
         box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(6)
+        box.setSpacing(8)
+        from ..widgets import ItemIcon
+
+        icon = ItemIcon(opt.get("img"))
+        box.addWidget(icon)
         name = QLabel(opt.get("name") or "—")
         name.setWordWrap(True)
         box.addWidget(name, 1)
+        wrap = QWidget()
+        vl = QVBoxLayout(wrap)
+        vl.setContentsMargins(0, 0, 0, 0)
+        vl.setSpacing(2)
         share = QLabel(f"{opt.get('share', 0)}%")
-        share.setProperty("statLabel", True)
-        box.addWidget(share)
+        share.setProperty("mono", True)
+        vl.addWidget(share)
+        from PySide6.QtWidgets import QProgressBar
+
+        bar = QProgressBar()
+        bar.setFixedHeight(4)
+        bar.setTextVisible(False)
+        bar.setRange(0, 100)
+        bar.setValue(int(opt.get("share", 0)))
+        vl.addWidget(bar)
+        box.addWidget(wrap)
         return host
 
     @staticmethod
