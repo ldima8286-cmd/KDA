@@ -19,6 +19,9 @@ fresh data on every launch when you are online.
   Roshan, aegis, courier kills).
 - **Meta Hub** — current hero meta with pro and pub pick/win rates; sortable
   columns and a Pro / public-rankings toggle.
+- **Hero screen** — click any hero for matchup spread, win rate by game length,
+  popular items per phase, **skill build by lane + role** (core/support) with
+  sample counts and small-sample warnings, and **talents** (10/15/20/25).
 - **Universal Engine** — a game-agnostic core (`Player` / `Match` / `HeroMeta`
   models + `GameAdapter` interface). Dota 2 is the first adapter; more games
   plug in without touching the UI.
