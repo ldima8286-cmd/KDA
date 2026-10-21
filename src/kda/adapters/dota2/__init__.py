@@ -163,8 +163,14 @@ class Dota2Adapter(GameAdapter):
         return self._ability_names, self._ability_meta
 
     def hero_build(self, hero_id: int) -> dict[str, Any]:
+        key = f"hero_build:{int(hero_id)}"
+        cached = self.client.cache.get(key)
+        if cached is not None:
+            return cached
         names, meta = self._ability_tables()
-        return skill_lab.hero_build_from_raw(self.client.hero_skill_build(hero_id), names, meta)
+        out = skill_lab.hero_build_from_raw(self.client.hero_skill_build(hero_id), names, meta)
+        self.client.cache.set(key, out, ttl=1800.0)
+        return out
 
     def hero_positions(self, hero_id: int) -> dict[str, Any]:
         """Pick share per lane position (1=carry ... 5=hard support)."""
