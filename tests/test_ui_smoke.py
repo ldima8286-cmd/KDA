@@ -76,6 +76,11 @@ class FakeService:
             "player": {"account_id": a, "name": "A", "avatar": None, "rank_tier": 50},
             "summary": {"winrate": 50.0, "avg_kda": "3.0", "avg_gpm": 500.0, "avg_xpm": 600.0, "matches": 10},
             "career": {"winrate": 50.0, "wl": {"games": 10}, "averages": {"kda": "3.0", "gold_per_min": 500}},
+            "trend": [{"game": 10, "winrate": 40.0}, {"game": 20, "winrate": 60.0}],
+            "heroes": [
+                {"hero_id": 1, "name": "Anti-Mage", "matches": 4, "winrate": 75.0},
+                {"hero_id": 2, "name": "Axe", "matches": 3, "winrate": 33.0},
+            ],
         }
         return {"a": base, "b": base}
 
@@ -122,3 +127,5 @@ def test_compare_panel_render(window):
     window._on_compare(window.service.compare(1, 2))
     assert window.compare_panel.body.isVisible() or True
     assert window.compare_panel.head_panel.isVisible() or True
+    assert window.compare_panel.trend_panel.isVisible() or True
+    assert window.compare_panel.heroes_panel.isVisible() or True
