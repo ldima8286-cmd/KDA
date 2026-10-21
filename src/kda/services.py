@@ -90,12 +90,28 @@ class KdaService:
         requester = getattr(adapter, "request_parse", None)
         return bool(requester(match_id)) if callable(requester) else False
 
-    def compare(self, id_a: int, id_b: int, game: str = "dota2") -> dict[str, Any]:
+    def _resolve_player(self, token: str | int, game: str = "dota2") -> int:
+        """Turn a nickname or account_id into an account_id."""
+        if isinstance(token, int):
+            return token
+        text = str(token).strip()
+        if not text:
+            raise ValueError("Пустой игрок")
+        if text.isdigit():
+            return int(text)
+        results = self.search(text, game)
+        if not results:
+            raise ValueError(f"Игрок «{text}» не найден")
+        return int(results[0]["account_id"])
+
+    def compare(self, id_a: str | int, id_b: str | int, game: str = "dota2") -> dict[str, Any]:
         adapter = self.adapter(game)
-        career_a = skill_lab.career_from_stats(adapter.career_stats(id_a))
-        career_b = skill_lab.career_from_stats(adapter.career_stats(id_b))
-        prof_a = skill_lab.build_profile(adapter.player(id_a), adapter.recent_matches(id_a, 20))
-        prof_b = skill_lab.build_profile(adapter.player(id_b), adapter.recent_matches(id_b, 20))
+        acc_a = self._resolve_player(id_a, game)
+        acc_b = self._resolve_player(id_b, game)
+        career_a = skill_lab.career_from_stats(adapter.career_stats(acc_a))
+        career_b = skill_lab.career_from_stats(adapter.career_stats(acc_b))
+        prof_a = skill_lab.build_profile(adapter.player(acc_a), adapter.recent_matches(acc_a, 20))
+        prof_b = skill_lab.build_profile(adapter.player(acc_b), adapter.recent_matches(acc_b, 20))
         return {
             "a": {**prof_a, "career": career_a},
             "b": {**prof_b, "career": career_b},

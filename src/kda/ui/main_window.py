@@ -36,7 +36,7 @@ _NAV = (
     ("player", "Skill Lab"),
     ("meta", "Meta Hub"),
     ("pro", "Pro Scene"),
-    ("compare", "Сравнение"),
+    ("compare", "Head-to-Head"),
 )
 
 
@@ -355,14 +355,21 @@ class MainWindow(QMainWindow):
             f"про-сцена · {len(data.get('matches') or [])} матчей", "ok"
         )
 
-    def _compare(self, id_a: int, id_b: int) -> None:
+    def _compare(self, id_a: str, id_b: str) -> None:
         self.compare_panel.set_loading()
         self.set_status("сравнение игроков…", "busy")
-        workers.submit(self.service.compare, self._on_compare, self._on_error, None, id_a, id_b, self._game)
+        workers.submit(
+            self.service.compare, self._on_compare, self._on_compare_error, None,
+            id_a, id_b, self._game,
+        )
 
     def _on_compare(self, data: dict) -> None:
         self.compare_panel.set_result(data)
         self.set_status("сравнение готово", "ok")
+
+    def _on_compare_error(self, message: str) -> None:
+        self.compare_panel.set_error(f"Не удалось сравнить: {message[:80]}")
+        self.set_status("нет соединения: " + message[:60], "err")
 
     # ---------- lifecycle ----------
 
