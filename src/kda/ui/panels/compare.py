@@ -3,13 +3,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -33,7 +35,8 @@ class _CompareRow(QWidget):
     """A single metric row: A value | label | B value, with a ratio bar."""
 
     def __init__(self, label: str, va: str, vb: str, na: float, nb: float,
-                 higher_better: bool = True, parent: QWidget | None = None) -> None:
+                 higher_better: bool = True, lower_better: bool = False,
+                 parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._va, self._vb = va, vb
 
@@ -53,10 +56,12 @@ class _CompareRow(QWidget):
         mid.setProperty("statLabel", True)
         mid.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        if higher_better:
-            if na > nb:
+        a_wins = na > nb if not lower_better else na < nb
+        b_wins = nb > na if not lower_better else nb < na
+        if na != nb:
+            if a_wins:
                 self._la.setStyleSheet(f"color: {C['win']};")
-            elif nb > na:
+            elif b_wins:
                 self._lb.setStyleSheet(f"color: {C['win']};")
 
         head.addWidget(self._la, 1)
@@ -105,6 +110,140 @@ class _RatioBar(QWidget):
         painter.drawRoundedRect(QRectF(mid, 0, share_b * mid, self.height()), 3, 3)
 
 
+class _DualTrendChart(QWidget):
+    """Two win-rate trend lines (A teal, B green) on a shared 0-100 grid."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._a: list[dict[str, Any]] = []
+        self._b: list[dict[str, Any]] = []
+        self.setMinimumHeight(160)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def set_data(self, a: list[dict[str, Any]], b: list[dict[str, Any]]) -> None:
+        self._a = a or []
+        self._b = b or []
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, ARG002
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect().adjusted(34, 12, -12, -18)
+        if rect.width() < 40 or rect.height() < 20:
+            return
+
+        font = QFont()
+        font.setPixelSize(10)
+        painter.setFont(font)
+        grid_pen = QPen(QColor(C["line"]))
+        faint_pen = QPen(QColor(C["faint"]))
+        for tick in (0, 25, 50, 75, 100):
+            y = rect.bottom() - (tick / 100.0) * rect.height()
+            painter.setPen(grid_pen)
+            painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
+            painter.setPen(faint_pen)
+            painter.drawText(
+                QRectF(0, y - 8, 30, 16),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                str(tick),
+            )
+
+        n = max(len(self._a), len(self._b))
+        if n == 0:
+            painter.setPen(faint_pen)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "нет данных")
+            return
+
+        def xy(i: int, value: float) -> QPointF:
+            x = rect.left() if n == 1 else rect.left() + i * rect.width() / (n - 1)
+            y = rect.bottom() - (max(0.0, min(100.0, value)) / 100.0) * rect.height()
+            return QPointF(x, y)
+
+        def draw(series: list[dict[str, Any]], color: str) -> None:
+            if not series:
+                return
+            pts = [xy(i, float(p.get("winrate", 0.0))) for i, p in enumerate(series)]
+            painter.setPen(QPen(QColor(color), 2))
+            for i in range(len(pts) - 1):
+                painter.drawLine(pts[i], pts[i + 1])
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(color))
+            for pt in pts:
+                painter.drawEllipse(pt, 2, 2)
+
+        draw(self._a, C["teal"])
+        draw(self._b, C["win"])
+
+
+class _HeroPoolCard(QWidget):
+    """Side-by-side top heroes for A and B with winrate bars."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(8)
+        self._grid = QGridLayout()
+        self._grid.setHorizontalSpacing(18)
+        self._grid.setVerticalSpacing(4)
+        outer.addLayout(self._grid)
+
+    def set_data(self, a: list[dict[str, Any]], b: list[dict[str, Any]]) -> None:
+        while self._grid.count():
+            item = self._grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        head = ("лк", "игр", "WR", "игр", "WR", "лк")
+        for col, text in enumerate(head):
+            label = QLabel(text)
+            label.setProperty("statLabel", True)
+            align = Qt.AlignmentFlag.AlignCenter
+            if col < 3:
+                align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            else:
+                align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            label.setAlignment(align)
+            self._grid.addWidget(label, 0, col)
+
+        rows = max(len(a), len(b))
+        for i in range(rows):
+            self._add_side(i + 1, 0, a[i] if i < len(a) else None, right=True)
+            self._add_side(i + 1, 3, b[i] if i < len(b) else None, right=False)
+
+    def _add_side(self, row: int, col: int, hero: dict[str, Any] | None, right: bool) -> None:
+        if hero is None:
+            return
+        name = _elide(str(hero.get("name") or hero.get("hero_id")), 16)
+        games = str(hero.get("matches", "—"))
+        wr = float(hero.get("winrate") or 0.0)
+        wr_text = f"{wr:.0f}%"
+        color = C["win"] if wr >= 50 else C["loss"]
+        if right:
+            w_name = QLabel(f"{name}")
+            w_name.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            w_games = QLabel(games)
+            w_games.setProperty("mono", True)
+            w_games.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            w_wr = QLabel(wr_text)
+            w_wr.setProperty("mono", True)
+            w_wr.setStyleSheet(f"color: {color};")
+            w_wr.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._grid.addWidget(w_name, row, col)
+            self._grid.addWidget(w_games, row, col + 1)
+            self._grid.addWidget(w_wr, row, col + 2)
+        else:
+            w_name = QLabel(f"{name}")
+            w_games = QLabel(games)
+            w_games.setProperty("mono", True)
+            w_wr = QLabel(wr_text)
+            w_wr.setProperty("mono", True)
+            w_wr.setStyleSheet(f"color: {color};")
+            w_wr.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            self._grid.addWidget(w_name, row, col)
+            self._grid.addWidget(w_games, row, col + 1)
+            self._grid.addWidget(w_wr, row, col + 2)
+
+
 class ComparePanel(QWidget):
     compareRequested = Signal(str, str)
 
@@ -113,6 +252,10 @@ class ComparePanel(QWidget):
         ("KDA", lambda c: f"{c['summary']['avg_kda']}", "up"),
         ("GPM", lambda c: f"{c['summary']['avg_gpm']:.0f}", "up"),
         ("XPM", lambda c: f"{c['summary']['avg_xpm']:.0f}", "up"),
+        ("Kills", lambda c: f"{c['summary'].get('avg_kills', 0):.1f}", "up"),
+        ("Deaths", lambda c: f"{c['summary'].get('avg_deaths', 0):.1f}", "down"),
+        ("Assists", lambda c: f"{c['summary'].get('avg_assists', 0):.1f}", "up"),
+        ("Часов", lambda c: f"{c['summary'].get('total_hours', 0):.1f}", "up"),
         ("Игр (20)", lambda c: f"{c['summary']['matches']}", "up"),
         ("Ранг", lambda c: rank_name(c["player"].get("rank_tier")), None),
         ("Игр всего", lambda c: fmt_int((c["career"].get("wl") or {}).get("games") or 0), "up"),
@@ -123,9 +266,21 @@ class ComparePanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        outer = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        from PySide6.QtWidgets import QScrollArea
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        content = QWidget()
+        outer = QVBoxLayout(content)
         outer.setContentsMargins(26, 22, 26, 22)
         outer.setSpacing(14)
+        scroll.setWidget(content)
+        root.addWidget(scroll)
 
         kicker = QLabel("HEAD-TO-HEAD")
         kicker.setProperty("kicker", True)
@@ -186,7 +341,21 @@ class ComparePanel(QWidget):
         self.rows_layout.setSpacing(2)
         self.body.add_layout(self.rows_layout)
         self.body.setVisible(False)
-        outer.addWidget(self.body, 1)
+        outer.addWidget(self.body)
+
+        self.trend_panel = Panel("Форма", "винрейт за 20 игр · A синий · B зелёный")
+        self.trend = _DualTrendChart()
+        self.trend_panel.add(self.trend)
+        self.trend_panel.setVisible(False)
+        outer.addWidget(self.trend_panel)
+
+        self.heroes_panel = Panel("Пул героев", "топ-5 по числу игр")
+        self.heroes_card = _HeroPoolCard()
+        self.heroes_panel.add(self.heroes_card)
+        self.heroes_panel.setVisible(False)
+        outer.addWidget(self.heroes_panel)
+
+        outer.addStretch(1)
 
     def _submit(self) -> None:
         a = self.input_a.text().strip()
@@ -209,6 +378,8 @@ class ComparePanel(QWidget):
         self.status.setVisible(False)
         self.head_panel.setVisible(True)
         self.body.setVisible(True)
+        self.trend_panel.setVisible(True)
+        self.heroes_panel.setVisible(True)
 
         while self.rows_layout.count():
             item = self.rows_layout.takeAt(0)
@@ -227,9 +398,17 @@ class ComparePanel(QWidget):
         for label, getter, mode in self._ROWS:
             va, vb = getter(a), getter(b)
             numa, numb = self._numeric(a, b, getter)
-            row = _CompareRow(label, va, vb, numa, numb, higher_better=(mode == "up"))
+            row = _CompareRow(
+                label, va, vb, numa, numb,
+                higher_better=(mode == "up"), lower_better=(mode == "down"),
+            )
             self.rows_layout.addWidget(row)
         self.rows_layout.addStretch(1)
+
+        self.trend.set_data(a.get("trend") or [], b.get("trend") or [])
+        self.heroes_card.set_data(
+            (a.get("heroes") or [])[:5], (b.get("heroes") or [])[:5]
+        )
 
     @staticmethod
     def _numeric(a: dict[str, Any], b: dict[str, Any], getter) -> tuple[float, float]:
