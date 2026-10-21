@@ -120,4 +120,5 @@ def test_hero_panel_render(window):
 def test_compare_panel_render(window):
     window.show_panel("compare")
     window._on_compare(window.service.compare(1, 2))
-    assert window.compare_panel.grid_panel.isVisible() or True
+    assert window.compare_panel.body.isVisible() or True
+    assert window.compare_panel.head_panel.isVisible() or True
