@@ -71,7 +71,9 @@ class KdaService:
             for row in raw.get("heroes", []):
                 hero_id = int(row.get("hero_id") or 0)
                 images[hero_id] = hero_icon(hero_id)
-        return skill_lab.career_from_stats(raw, raw.get("heroes"), images)
+        return skill_lab.career_from_stats(
+            raw, raw.get("heroes"), images, self._hero_names(game)
+        )
 
     def match(self, match_id: int, game: str = "dota2") -> dict[str, Any]:
         adapter = self.adapter(game)
@@ -205,14 +207,16 @@ class KdaService:
         return self._offline
 
     def _hero_names(self, game: str) -> dict[int, str]:
-        cached = getattr(self, "_hero_name_cache", None)
-        if cached is None:
+        cache = getattr(self, "_hero_name_cache", None)
+        if cache is None:
+            cache = {}
+            self._hero_name_cache = cache
+        if game not in cache:
             try:
-                cached = {h.hero_id: h.name for h in self.adapter(game).heroes()}
+                cache[game] = {h.hero_id: h.name for h in self.adapter(game).heroes()}
             except Exception:  # noqa: BLE001 - lookup is best-effort
-                cached = {}
-            self._hero_name_cache = cached
-        return cached
+                cache[game] = {}
+        return cache[game]
 
     def meta(self, game: str = "dota2") -> dict[str, Any]:
         try:

@@ -283,6 +283,27 @@ class AdapterOfflineTests(unittest.TestCase):
         self.assertEqual(out["talents"][0]["tier"], 10)
         self.assertEqual(out["talents"][0]["options"][0]["name"], "Talent: Antimage")
 
+    def test_high_ability_ids_are_not_mistaken_for_talents(self):
+        from kda.analytics.skill_lab import hero_build_from_raw
+
+        # Modern ability ids are all >= 7000 (e.g. hoodwink_acorn_shot = 8429),
+        # so the old "id >= 7000 means talent" rule dropped every ability.
+        names = {
+            8429: "hoodwink_acorn_shot",
+            9501: "hoodwink_scurry",
+            5100: "special_bonus_unique_hoodwink",
+        }
+        rows = [{"ability_upgrades_arr": [8429, 9501, 8429]}]
+        out = hero_build_from_raw(rows, names, {})
+        self.assertEqual(out["order"][0]["ability_id"], 8429)
+        self.assertEqual(out["order"][1]["ability_id"], 9501)
+        self.assertEqual(out["talents"], [])
+
+        # A talent sits at its hero level (index + 1), not the ability count.
+        arr = [8429] * 9 + [5100] + [9501] * 4 + [5100]
+        out = hero_build_from_raw([{"ability_upgrades_arr": arr}], names, {})
+        self.assertEqual([t["tier"] for t in out["talents"]], [10, 15])
+
 
 class ServiceOfflineTests(unittest.TestCase):
     def test_profile_is_built_and_enriched(self):

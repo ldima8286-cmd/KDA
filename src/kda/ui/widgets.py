@@ -323,13 +323,13 @@ class RankBadge(QWidget):
         painter.drawPath(path)
 
 
-def item_cell(metas: list[dict[str, str]]) -> QWidget:
-    """Row of six item tiles plus the neutral slot."""
+def item_cell(metas: list[dict[str, str]], limit: int = 6) -> QWidget:
+    """Row of item tiles (six by default) plus the neutral slot."""
     wrap = QWidget()
     lay = QHBoxLayout(wrap)
     lay.setContentsMargins(4, 2, 4, 2)
     lay.setSpacing(3)
-    for meta in (metas or [])[:6]:
+    for meta in (metas or [])[:limit]:
         lay.addWidget(ItemIcon(meta.get("img") or None, meta.get("name") or ""))
     lay.addStretch(1)
     return wrap
@@ -350,13 +350,22 @@ def row_id(table: QTableWidget, row: int) -> int | None:
     return int(value) if value is not None else None
 
 
-def hero_cell(url: str | None, name: str, size: int = HeroIcon.SIZE) -> QWidget:
-    """Icon + name row used inside table cells."""
+def hero_cell(
+    url: str | None,
+    name: str,
+    size: int = HeroIcon.SIZE,
+    icon_url: str | None = None,
+) -> QWidget:
+    """Icon + name row used inside table cells.
+
+    ``icon_url`` (the square 32x32 asset) is preferred over the wide banner
+    ``url`` because a square crop of a landscape banner can lose the portrait.
+    """
     wrap = QWidget()
     lay = QHBoxLayout(wrap)
     lay.setContentsMargins(8, 5, 8, 5)
     lay.setSpacing(11)
-    icon = HeroIcon(url)
+    icon = HeroIcon(icon_url or url)
     icon.resize_icon(size)
     lay.addWidget(icon)
     label = QLabel(name)

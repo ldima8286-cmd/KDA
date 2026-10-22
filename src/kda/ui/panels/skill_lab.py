@@ -196,7 +196,9 @@ class SkillLabPanel(QWidget):
         heroes = (profile.get("heroes") or [])[:12]
         self.heroes_table.setRowCount(len(heroes))
         for row, hero in enumerate(heroes):
-            self.heroes_table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
+            self.heroes_table.setCellWidget(
+                row, 0, hero_cell(hero.get("img"), hero["name"], icon_url=hero.get("icon"))
+            )
             set_text(self.heroes_table, row, 1, hero["matches"], mono=True, right=True)
             set_text(self.heroes_table, row, 2, f"{hero['winrate']}%", mono=True, right=True)
             set_text(self.heroes_table, row, 3, hero["avg_kda"], mono=True, right=True)
@@ -207,7 +209,11 @@ class SkillLabPanel(QWidget):
         self._recent_ids = [int(m["match_id"]) for m in recent]
         self.recent_table.setRowCount(len(recent))
         for row, match in enumerate(recent):
-            self.recent_table.setCellWidget(row, 0, hero_cell(match.get("img"), match["hero_name"]))
+            self.recent_table.setCellWidget(
+                row,
+                0,
+                hero_cell(match.get("img"), match["hero_name"], icon_url=match.get("icon")),
+            )
             set_text(
                 self.recent_table,
                 row,
@@ -263,7 +269,8 @@ class SkillLabPanel(QWidget):
         popular = career.get("popular_heroes") or []
         self.popular_table.setRowCount(len(popular))
         for row, hero in enumerate(popular):
-            self.popular_table.setCellWidget(row, 0, hero_cell(hero.get("img"), f"#{hero['hero_id']}"))
+            label = hero.get("name") or f"#{hero['hero_id']}"
+            self.popular_table.setCellWidget(row, 0, hero_cell(hero.get("img"), label))
             set_text(self.popular_table, row, 1, fmt_int(hero["games"]), mono=True, right=True)
             set_text(self.popular_table, row, 2, f"{hero['wins']} / {hero['lost']}", mono=True, right=True)
             set_text(self.popular_table, row, 3, f"{hero['winrate']}%", mono=True, right=True)

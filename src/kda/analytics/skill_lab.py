@@ -97,9 +97,11 @@ def career_from_stats(
     raw: dict,
     heroes: list[dict] | None = None,
     images: dict[int, str] | None = None,
+    names: dict[int, str] | None = None,
 ) -> dict:
     """Turn /players/{id}/wl + totals + heroes into a career summary."""
     images = images or {}
+    names = names or {}
     totals = raw.get("totals") or []
     wl = raw.get("wl") or {}
 
@@ -124,6 +126,7 @@ def career_from_stats(
         popular.append(
             {
                 "hero_id": hero_id,
+                "name": names.get(hero_id, f"hero #{hero_id}"),
                 "games": played,
                 "wins": won,
                 "lost": played - won,
@@ -142,8 +145,11 @@ def career_from_stats(
 
 
 def _is_talent(ability_id: int, ability_names: dict[int, str]) -> bool:
+    # Modern ability ids are all >= 7000 (e.g. hoodwink_acorn_shot is 8429),
+    # so the id alone cannot identify a talent. OpenDota names talents with a
+    # "special_bonus" prefix, which is the reliable signal.
     name = ability_names.get(ability_id, "")
-    return name.startswith("special_bonus") or ability_id >= 7000
+    return name.startswith("special_bonus")
 
 
 def _humanize_ability(key: str) -> str:
@@ -164,8 +170,13 @@ def _humanize_ability(key: str) -> str:
 def _clean_talent(text: str) -> str:
     import re
 
-    cleaned = re.sub(r"\{[svm]:[^}]*\}", "?", text)
-    return cleaned.strip() or "Talent"
+    cleaned = re.sub(r"\{[svmfd]:[^}]*\}", "?", text)
+    if "?" in cleaned:
+        # Drop a leading value placeholder like "+?% " / "-?s " but keep the words.
+        cleaned = re.sub(r"^[+\-]?\??[a-zA-Z%]{0,3}\s+", "", cleaned)
+        cleaned = cleaned.replace("?", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or "Talent"
 
 
 LANE_NAMES = {1: "safe", 2: "mid", 3: "off", 4: "jungle"}
@@ -204,10 +215,12 @@ def _aggregate(
             continue
         games += 1
         skill_slot = 0
-        for ability_id in arr:
+        for index, ability_id in enumerate(arr):
             ability_id = int(ability_id)
             if _is_talent(ability_id, ability_names):
-                hero_level = skill_slot + 1
+                # A talent occupies a hero level (10/15/20/25), which is the
+                # index in the upgrade array, not the ability-point count.
+                hero_level = index + 1
                 if hero_level in talent_counts:
                     talent_counts[hero_level][ability_id] += 1
                 continue
