@@ -233,7 +233,15 @@ class MainWindow(QMainWindow):
         self.set_status(f"данные обновлены · {stamp}", "ok")
 
     def _on_error(self, message: str) -> None:
-        self.set_status(f"нет соединения: {message[:60]}", "err")
+        text = str(message)
+        transient = any(
+            marker in text
+            for marker in ("временно недоступен", "521", "502", "503", "504", "timed out")
+        )
+        if transient:
+            self.set_status("сервер OpenDota временно недоступен — повторите позже", "err")
+        else:
+            self.set_status(f"нет соединения: {text[:60]}", "err")
 
     def _on_game_changed(self) -> None:
         self._game = self._game_combo.currentData() or "dota2"

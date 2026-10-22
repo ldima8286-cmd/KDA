@@ -177,6 +177,35 @@ class AdapterOfflineTests(unittest.TestCase):
         with self.assertRaises(OpenDotaError):
             adapter.search("nope")
 
+    def test_server_error_retries_then_friendly_message(self):
+        import kda.adapters.dota2.opendota as opendota
+
+        class FakeResp:
+            status_code = 521
+
+            def raise_for_status(self):
+                raise httpx.HTTPStatusError("521", request=None, response=None)
+
+        class FakeClient:
+            calls = 0
+
+            def get(self, path, params=None):
+                FakeClient.calls += 1
+                return FakeResp()
+
+        original_sleep = opendota.time.sleep
+        opendota.time.sleep = lambda *_: None
+        try:
+            client = OpenDotaClient()
+            client._client = FakeClient()
+            with self.assertRaises(opendota.OpenDotaError) as ctx:
+                client._get("/heroes")
+        finally:
+            opendota.time.sleep = original_sleep
+        self.assertEqual(FakeClient.calls, 5)
+        self.assertIn("временно недоступен", str(ctx.exception))
+        self.assertIn("521", str(ctx.exception))
+
     def test_match_detail_and_career(self):
         adapter = self._adapter(
             {
