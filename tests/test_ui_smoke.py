@@ -129,3 +129,19 @@ def test_compare_panel_render(window):
     assert window.compare_panel.head_panel.isVisible() or True
     assert window.compare_panel.trend_panel.isVisible() or True
     assert window.compare_panel.heroes_panel.isVisible() or True
+
+
+def test_hero_cell_derives_square_icon(qapp):
+    from kda.ui.widgets import HeroIcon, hero_cell
+
+    cell = hero_cell("https://cdn/x/heroes/rubick.png?t=1", "Rubick")
+    icon = cell.findChild(HeroIcon)
+    assert icon is not None
+    assert "/heroes/icons/rubick.png" in icon._url
+
+    cell2 = hero_cell(
+        "https://cdn/x/heroes/rubick.png",
+        "Rubick",
+        icon_url="https://cdn/x/heroes/icons/rubick.png",
+    )
+    assert cell2.findChild(HeroIcon)._url == "https://cdn/x/heroes/icons/rubick.png"

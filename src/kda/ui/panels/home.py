@@ -165,7 +165,9 @@ class HomePanel(QWidget):
         self._pub_table.setRowCount(len(top_pub))
         for row, hero in enumerate(top_pub):
             set_row_id(self._pub_table, row, int(hero["hero_id"]))
-            self._pub_table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
+            self._pub_table.setCellWidget(
+                row, 0, hero_cell(hero.get("img"), hero["name"], icon_url=hero.get("icon"))
+            )
             set_text(self._pub_table, row, 1, f"{hero['pub_pick_share']}%", mono=True, right=True)
             set_text(
                 self._pub_table,
@@ -181,7 +183,9 @@ class HomePanel(QWidget):
         self._wr_table.setRowCount(len(best_wr))
         for row, hero in enumerate(best_wr):
             set_row_id(self._wr_table, row, int(hero["hero_id"]))
-            self._wr_table.setCellWidget(row, 0, hero_cell(hero.get("img"), hero["name"]))
+            self._wr_table.setCellWidget(
+                row, 0, hero_cell(hero.get("img"), hero["name"], icon_url=hero.get("icon"))
+            )
             set_text(
                 self._wr_table,
                 row,

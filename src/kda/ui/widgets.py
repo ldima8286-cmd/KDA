@@ -361,6 +361,12 @@ def hero_cell(
     ``icon_url`` (the square 32x32 asset) is preferred over the wide banner
     ``url`` because a square crop of a landscape banner can lose the portrait.
     """
+    # Dota serves a wide 256x144 banner at .../heroes/<name>.png and a square
+    # 32x32 portrait at .../heroes/icons/<name>.png. A centre-crop of the wide
+    # banner can clip the portrait, so always derive the square asset when the
+    # caller only passed the banner.
+    if not icon_url and url and "/heroes/" in url and "/heroes/icons/" not in url:
+        icon_url = url.replace("/heroes/", "/heroes/icons/")
     wrap = QWidget()
     lay = QHBoxLayout(wrap)
     lay.setContentsMargins(8, 5, 8, 5)
