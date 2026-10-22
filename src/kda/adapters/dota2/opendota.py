@@ -40,19 +40,35 @@ class OpenDotaClient:
             return cached
 
         last_exc: Exception | None = None
-        for attempt in range(3):
+        status: int | None = None
+        attempts = 5
+        for attempt in range(attempts):
             try:
                 resp = self._client.get(path, params=params)
-                if resp.status_code == 429:
-                    time.sleep(1.0 + attempt)
-                    continue
+                status = resp.status_code
+                if status == 429 or status >= 500:
+                    # Rate limited or the origin is briefly down (Cloudflare
+                    # 521/522/523) — back off and retry rather than surfacing
+                    # a scary network error.
+                    if attempt < attempts - 1:
+                        time.sleep(1.0 * (2**attempt))
+                        continue
                 resp.raise_for_status()
                 data = resp.json()
                 self.cache.set(key, data)
                 return data
             except httpx.HTTPError as exc:
                 last_exc = exc
-                time.sleep(0.5 * (attempt + 1))
+                code = getattr(getattr(exc, "response", None), "status_code", None)
+                if code is not None and 400 <= code < 500 and code != 429:
+                    # Client errors won't heal on retry — fail fast.
+                    break
+                if attempt < attempts - 1:
+                    time.sleep(0.5 * (attempt + 1))
+        if status is not None and status >= 500:
+            raise OpenDotaError(
+                f"сервер OpenDota временно недоступен ({status}) — повторите позже"
+            )
         raise OpenDotaError(f"GET {path} failed: {last_exc}")
 
     # --- high level ---
