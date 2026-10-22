@@ -171,11 +171,11 @@ class HeroPanel(QWidget):
         talents_grid.setVerticalSpacing(10)
         self._talent_boxes: dict[int, QWidget] = {}
         self._talent_labels: dict[int, QLabel] = {}
-        self._talent_bars: dict[int, object] = {}
+        self._talent_shares: dict[int, QLabel] = {}
         for row, tier in enumerate(_TALENT_TIERS):
             tier_lab = QLabel(f"Тир {tier}")
             tier_lab.setProperty("panelTitle", True)
-            talents_grid.addWidget(tier_lab, row, 0, 1, 2)
+            talents_grid.addWidget(tier_lab, row * 2, 0, 1, 2)
             for col in (0, 1):
                 box = QWidget()
                 box.setProperty("role", "panel2")
@@ -190,8 +190,9 @@ class HeroPanel(QWidget):
                 lay.addWidget(share)
                 self._talent_boxes[(tier, col)] = box
                 self._talent_labels[(tier, col)] = name
+                self._talent_shares[(tier, col)] = share
                 box.hide()
-                talents_grid.addWidget(box, row + 1, col)
+                talents_grid.addWidget(box, row * 2 + 1, col)
         talents_panel.add_layout(talents_grid)
         self._talents_note = QLabel("Нет данных")
         self._talents_note.setProperty("empty", True)
@@ -260,11 +261,26 @@ class HeroPanel(QWidget):
                 color=C["win"] if wr >= 50 else C["loss"],
             )
 
+        self._fill_items(data.get("items") or {})
+
         self._build_data = data.get("build") or {}
         self._apply_build_filter()
 
         self._body.show()
         self.empty.hide()
+
+    def _fill_items(self, items: dict[str, list]) -> None:
+        for key, host in self._item_rows.items():
+            lay = host.layout()
+            while lay.count():
+                entry = lay.takeAt(0)
+                widget = entry.widget()
+                if widget is not None:
+                    widget.deleteLater()
+            metas = items.get(key) or []
+            if metas:
+                lay.addWidget(item_cell(metas, limit=8))
+            lay.addStretch(1)
 
     def _checked_key(self, group: QButtonGroup) -> str:
         btn = group.checkedButton()
@@ -352,12 +368,13 @@ class HeroPanel(QWidget):
                     opt = options[col]
                     any_data = True
                     name.setText(opt.get("name") or "—")
+                    self._talent_shares[(tier, col)].setText(f"{opt.get('share', 0)}%")
                     box.setToolTip(f"{opt.get('picks', 0)} взятий · {opt.get('share', 0)}%")
                     box.show()
                 else:
                     box.hide()
+        self._talents_note.setVisible(not any_data)
         if not any_data:
-            self._talents_note.setVisible(True)
             games = (build or {}).get("games") or 0
             if games and games < 80:
                 self._talents_note.setText("Малая выборка")
