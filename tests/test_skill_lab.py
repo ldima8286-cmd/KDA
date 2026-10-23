@@ -42,6 +42,21 @@ class SkillLabTests(unittest.TestCase):
         self.assertEqual(profile["heroes"][0]["matches"], 2)
         self.assertEqual(len(profile["trend"]), 1)
 
+    def test_kda_uses_totals_not_per_match_average(self):
+        p = Player(game="dota2", account_id=1, name="P")
+        matches = [
+            _match(1, 1, True, k=10, d=2, a=5),
+            _match(2, 1, False, k=4, d=6, a=3),
+            _match(3, 2, True, k=8, d=1, a=8),
+        ]
+        profile = skill_lab.build_profile(p, matches)
+
+        # (10+4+8) + (5+3+8) kills+assists over 9 deaths -> 4.22, not the
+        # inflated mean of per-match ratios (8.22).
+        self.assertEqual(profile["summary"]["avg_kda"], 4.22)
+        hero1 = next(h for h in profile["heroes"] if h["hero_id"] == 1)
+        self.assertEqual(hero1["avg_kda"], 2.75)
+
 
 class MetaHubTests(unittest.TestCase):
     def test_build_meta_shares_and_ranking(self):

@@ -175,3 +175,13 @@ def test_stat_card_reveals_late_subtitle(qapp):
     card.set_value("42%", "Hoodwink")
     assert card._sub_label.text() == "Hoodwink"
     assert card._sub_label.isVisible() or not card.isVisible()
+
+
+def test_hero_cell_without_art_uses_initial_tile(qapp):
+    from PySide6.QtWidgets import QLabel
+
+    from kda.ui.widgets import hero_cell
+
+    cell = hero_cell(None, "Mirage")
+    texts = [label.text() for label in cell.findChildren(QLabel)]
+    assert "M" in texts
