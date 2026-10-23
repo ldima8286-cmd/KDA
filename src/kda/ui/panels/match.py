@@ -20,6 +20,7 @@ from ..widgets import (
     AdvantageChart,
     ClickableTable,
     Panel,
+    duo_cell,
     item_cell,
     make_table,
     set_text,
@@ -92,17 +93,17 @@ class MatchPanel(QWidget):
         self.result_panel.add_layout(action_row)
         content.addWidget(self.result_panel)
 
-        self.adv_panel = Panel("Преимущество", "золото · опыт (Radiant сверху)")
+        self.adv_panel = Panel("Преимущество", "золото · опыт (Свет сверху)")
         self.adv_chart = AdvantageChart()
         self.adv_panel.add(self.adv_chart)
         content.addWidget(self.adv_panel)
 
-        self.radiant_panel = Panel("Radiant")
+        self.radiant_panel = Panel("Свет")
         self.radiant_table = self._scoreboard()
         self.radiant_panel.add(self.radiant_table)
         content.addWidget(self.radiant_panel)
 
-        self.dire_panel = Panel("Dire")
+        self.dire_panel = Panel("Тьма")
         self.dire_table = self._scoreboard()
         self.dire_panel.add(self.dire_table)
         content.addWidget(self.dire_panel)
@@ -111,7 +112,7 @@ class MatchPanel(QWidget):
         bottom.setSpacing(14)
 
         draft_panel = Panel("Драфт")
-        self.draft_table = make_table(["#", "Team", "Пик / бан", "Герой"], numeric={0})
+        self.draft_table = make_table(["#", "Сторона", "Пик / бан", "Герой"], numeric={0})
         self.draft_table.setMinimumHeight(320)
         draft_panel.add(self.draft_table)
         bottom.addWidget(draft_panel, 1)
@@ -132,17 +133,20 @@ class MatchPanel(QWidget):
 
     @staticmethod
     def _scoreboard() -> ClickableTable:
-        return make_table(
+        table = make_table(
             ["Игрок", "Ур.", "K / D / A", "LH / DN", "GPM", "XPM", "Net", "Урон", "Предметы"],
             numeric={1, 2, 3, 4, 5, 6, 7},
+            first_width=220,
+            row_height=50,
         )
+        table.setMinimumHeight(40 + 5 * 50)
+        return table
 
     def set_match(self, data: dict[str, Any]) -> None:
         radiant_win = data["radiant_win"]
-        winner = "RADIANT" if radiant_win else "DIRE"
-        self.radiant_score.setText(f"RADIANT · {data['radiant_score']}")
-        self.dire_score.setText(f"{data['dire_score']} · DIRE")
-        self.result_mid.setText(f"{winner} ПОБЕДА")
+        self.radiant_score.setText(f"СВЕТ · {data['radiant_score']}")
+        self.dire_score.setText(f"{data['dire_score']} · ТЬМА")
+        self.result_mid.setText("ПОБЕДА СВЕТА" if radiant_win else "ПОБЕДА ТЬМЫ")
         self.match_label.setText(f"матч {data['match_id']}")
 
         when = datetime.fromtimestamp(data["start_time"]).strftime("%d.%m.%Y %H:%M") if data["start_time"] else "—"
@@ -197,9 +201,9 @@ class MatchPanel(QWidget):
         table.setRowCount(len(rows))
         for row, p in enumerate(rows):
             name = p.get("personaname") or (f"id {p['account_id']}" if p.get("account_id") else "—")
-            label = QLabel(f"{name}  ·  {p['hero_name']}")
-            label.setProperty("heroName", True)
-            table.setCellWidget(row, 0, label)
+            table.setCellWidget(
+                row, 0, duo_cell(p.get("hero_icon"), name, p["hero_name"], size=32)
+            )
             set_text(table, row, 1, p["level"], mono=True, right=True)
             set_text(table, row, 2, f"{p['kills']} / {p['deaths']} / {p['assists']}", mono=True, right=True)
             set_text(table, row, 3, f"{p['last_hits']} / {p['denies']}", mono=True, right=True)
@@ -213,7 +217,7 @@ class MatchPanel(QWidget):
         self.draft_table.setRowCount(len(picks))
         for row, pb in enumerate(picks):
             set_text(self.draft_table, row, 0, row + 1, mono=True, right=True)
-            team = "Radiant" if pb["team"] == 0 else "Dire"
+            team = "Свет" if pb["team"] == 0 else "Тьма"
             set_text(
                 self.draft_table,
                 row,
