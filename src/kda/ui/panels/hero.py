@@ -341,6 +341,9 @@ class HeroPanel(QWidget):
         self._build_note.setVisible(not entries)
         if games:
             note = f"На основе {fmt_int(games)} матчей"
+            patch = (getattr(self, "_build_data", {}) or {}).get("patch")
+            if patch:
+                note += f" · патч {patch}"
             if key != "all":
                 note += f" · {self._group_label(key)}"
             if games < 80:

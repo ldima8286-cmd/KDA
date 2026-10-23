@@ -304,6 +304,17 @@ class AdapterOfflineTests(unittest.TestCase):
         out = hero_build_from_raw([{"ability_upgrades_arr": arr}], names, {})
         self.assertEqual([t["tier"] for t in out["talents"]], [10, 15])
 
+    def test_talent_tier_table_overrides_array_position(self):
+        from kda.analytics.skill_lab import hero_build_from_raw
+
+        names = {8429: "hoodwink_acorn_shot", 5100: "special_bonus_hp_175"}
+        rows = [{"ability_upgrades_arr": [8429, 5100, 8429]}]
+        # The hero's talent table says this id belongs to tier 25, even though
+        # it appears early in the array (which is not a reliable level proxy).
+        out = hero_build_from_raw(rows, names, {}, {5100: 25}, "7.41")
+        self.assertEqual(out["patch"], "7.41")
+        self.assertEqual([t["tier"] for t in out["talents"]], [25])
+
 
 class ServiceOfflineTests(unittest.TestCase):
     def test_profile_is_built_and_enriched(self):
