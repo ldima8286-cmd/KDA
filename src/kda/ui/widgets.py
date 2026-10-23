@@ -431,6 +431,38 @@ def hero_cell(
     return wrap
 
 
+def duo_cell(
+    url: str | None,
+    top: str,
+    bottom: str,
+    size: int = 32,
+) -> QWidget:
+    """Icon with a two-line caption (primary label above a muted one)."""
+    wrap = QWidget()
+    wrap.setStyleSheet("background: transparent;")
+    lay = QHBoxLayout(wrap)
+    lay.setContentsMargins(6, 4, 6, 4)
+    lay.setSpacing(9)
+    if url:
+        icon = HeroIcon(url)
+        icon.resize_icon(size)
+        icon.setStyleSheet("background: transparent; border: none;")
+        lay.addWidget(icon)
+    else:
+        lay.addWidget(_initial_tile(top or bottom, size))
+    col = QVBoxLayout()
+    col.setContentsMargins(0, 0, 0, 0)
+    col.setSpacing(0)
+    primary = ElidedLabel(top)
+    primary.setProperty("heroName", True)
+    secondary = ElidedLabel(bottom)
+    secondary.setProperty("faint", True)
+    col.addWidget(primary)
+    col.addWidget(secondary)
+    lay.addLayout(col, 1)
+    return wrap
+
+
 def _initial_tile(name: str, size: int) -> QLabel:
     """Placeholder badge for rows without an image (e.g. CS2 maps)."""
     tile = QLabel((name or "?")[:1].upper())
@@ -724,6 +756,8 @@ def make_table(
     table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     table.setShowGrid(False)
+    table.setWordWrap(False)
+    table.setTextElideMode(Qt.TextElideMode.ElideRight)
     table.setSortingEnabled(False)
 
     header = table.horizontalHeader()

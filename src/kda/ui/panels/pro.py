@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 
 from ...format import fmt_dur
 from ..theme import C
-from ..widgets import Panel, make_table, set_text
+from ..widgets import Panel, hero_cell, make_table, set_text
 
 
 class ProPanel(QWidget):
@@ -54,12 +54,18 @@ class ProPanel(QWidget):
         split.setSpacing(14)
 
         self._teams_panel = teams_panel = Panel("Топ команд", "по рейтингу")
-        self.teams_table = make_table(["Команда", "Рейтинг", "W / L", "WR"], numeric={1, 2, 3})
+        self.teams_table = make_table(
+            ["Команда", "Рейтинг", "W / L", "WR"], numeric={1, 2, 3},
+            first_width=240, row_height=46,
+        )
         teams_panel.add(self.teams_table)
         split.addWidget(teams_panel, 1)
 
         self._players_panel = players_panel = Panel("Про-игроки", "клик — открыть профиль")
-        self.players_table = make_table(["Игрок", "Команда", "Страна"], numeric=set(), clickable=True)
+        self.players_table = make_table(
+            ["Игрок", "Команда", "Страна"], numeric=set(), clickable=True,
+            first_width=200, row_height=46,
+        )
         self.players_table.rowClicked.connect(self._on_player_clicked)
         players_panel.add(self.players_table)
         split.addWidget(players_panel, 1)
@@ -111,7 +117,9 @@ class ProPanel(QWidget):
         self.teams_table.setRowCount(len(teams))
         for row, t in enumerate(teams):
             name = f"{t['name']} [{t['tag']}]" if t["tag"] else t["name"]
-            set_text(self.teams_table, row, 0, name)
+            self.teams_table.setCellWidget(
+                row, 0, hero_cell(t.get("logo_url"), name, size=30)
+            )
             set_text(self.teams_table, row, 1, t["rating"], mono=True, right=True)
             set_text(self.teams_table, row, 2, f"{t['wins']} / {t['losses']}", mono=True, right=True)
             set_text(self.teams_table, row, 3, f"{t['winrate']}%", mono=True, right=True,
@@ -121,7 +129,9 @@ class ProPanel(QWidget):
         self._player_ids = [int(p["account_id"]) for p in players]
         self.players_table.setRowCount(len(players))
         for row, p in enumerate(players):
-            set_text(self.players_table, row, 0, p["name"])
+            self.players_table.setCellWidget(
+                row, 0, hero_cell(p.get("avatar"), p["name"], size=30)
+            )
             team = f"{p['team_name']} [{p['team_tag']}]" if p["team_tag"] else (p["team_name"] or "—")
             set_text(self.players_table, row, 1, team)
             set_text(self.players_table, row, 2, (p.get("country") or "—").upper(), mono=True)
