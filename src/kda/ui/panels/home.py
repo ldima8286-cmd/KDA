@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...format import fmt_int
 from ..theme import C
 from ..widgets import HeroIcon, Panel, StatCard, hero_cell, make_table, row_id, set_row_id, set_text
 
@@ -81,8 +82,8 @@ class HomePanel(QWidget):
         kpis = QHBoxLayout()
         kpis.setSpacing(14)
         self.kpi_heroes = StatCard("Героев в мете", "—")
-        self.kpi_contested = StatCard("Контест-пик", "—", accent="accent")
-        self.kpi_pub = StatCard("Топ пабов → WR", "—", accent="teal")
+        self.kpi_contested = StatCard("Контест-пик (Pro)", "—", accent="accent")
+        self.kpi_pub = StatCard("Лучший WR в пабах", "—", accent="teal")
         self.kpi_top = StatCard("Самый популярный", "—")
         for card in (self.kpi_heroes, self.kpi_contested, self.kpi_pub, self.kpi_top):
             kpis.addWidget(card, 1)
@@ -110,19 +111,18 @@ class HomePanel(QWidget):
         split.setSpacing(14)
 
         self.pubs = Panel("Топ по пабам", "клик — открыть героя")
-        self._pub_table = make_table(["Герой", "Pick share", "Побед"], numeric={1, 2}, clickable=True)
+        self._pub_table = make_table(["Герой", "Доля пиков", "WR"], numeric={1, 2}, clickable=True, first_width=200)
         self._pub_table.rowClicked.connect(self._on_pub_clicked)
         self.pubs.add(self._pub_table)
         split.addWidget(self.pubs, 3)
 
         self.wr_panel = Panel("Самые побеждающие (пабы)", "клик — открыть героя")
-        self._wr_table = make_table(["Герой", "WR", "Игр"], numeric={1, 2}, clickable=True)
+        self._wr_table = make_table(["Герой", "WR", "Игр"], numeric={1, 2}, clickable=True, first_width=200)
         self._wr_table.rowClicked.connect(self._on_wr_clicked)
         self.wr_panel.add(self._wr_table)
         split.addWidget(self.wr_panel, 2)
 
-        content.addLayout(split)
-        content.addStretch(1)
+        content.addLayout(split, 1)
         scroll.setWidget(body)
         outer.addWidget(scroll, 1)
 
@@ -140,14 +140,14 @@ class HomePanel(QWidget):
         self.kpi_heroes.set_value(str(total), "в справочнике")
         if contested:
             top = contested[0]
-            self.kpi_contested.set_value(top["name"], f"{top['pro_pick']} пиков")
+            self.kpi_contested.set_value(top["name"], f"{fmt_int(top['pro_pick'])} пиков")
         else:
             self.kpi_contested.set_value("—")
         if pubs:
-            best = pubs[0]
-            self.kpi_pub.set_value(f"{best['pub_winrate']:.0f}%", best["name"])
+            best = max(pubs, key=lambda h: h.get("pub_winrate") or 0)
+            self.kpi_pub.set_value(f"{best['pub_winrate']:.1f}%", best["name"])
             top_pub = max(pubs, key=lambda h: h.get("pub_pick") or 0)
-            self.kpi_top.set_value(top_pub["name"], f"{top_pub['pub_pick_share']}% пиков")
+            self.kpi_top.set_value(top_pub["name"], f"{top_pub['pub_pick_share']:.2f}% пиков")
 
         pick_max = max((int(h.get("pro_pick") or 0) for h in contested), default=0)
         show = contested[:8]
@@ -168,7 +168,7 @@ class HomePanel(QWidget):
             self._pub_table.setCellWidget(
                 row, 0, hero_cell(hero.get("img"), hero["name"], icon_url=hero.get("icon"))
             )
-            set_text(self._pub_table, row, 1, f"{hero['pub_pick_share']}%", mono=True, right=True)
+            set_text(self._pub_table, row, 1, f"{hero['pub_pick_share']:.2f}%", mono=True, right=True)
             set_text(
                 self._pub_table,
                 row,
@@ -195,7 +195,7 @@ class HomePanel(QWidget):
                 right=True,
                 color=C["win"],
             )
-            set_text(self._wr_table, row, 2, f"{hero['pub_pick']}", mono=True, right=True)
+            set_text(self._wr_table, row, 2, fmt_int(hero['pub_pick']), mono=True, right=True)
 
     def _on_pub_clicked(self, row: int) -> None:
         hero_id = row_id(self._pub_table, row)

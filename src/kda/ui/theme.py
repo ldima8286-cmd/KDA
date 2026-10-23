@@ -31,6 +31,8 @@ RADIUS_SM = 7
 
 STYLE = f"""
 QWidget {{ background: {C['bg']}; color: {C['ink']}; font-size: 13px; }}
+/* Labels must be transparent so panel/card colours show through. */
+QLabel {{ background: transparent; }}
 
 /* ---------- panels ---------- */
 QFrame[role="panel"] {{
@@ -39,6 +41,11 @@ QFrame[role="panel"] {{
     border-radius: {RADIUS}px;
 }}
 QFrame[role="head"] {{ background: transparent; border: none; }}
+QFrame[role="panel2"] {{
+    background: {C['panel2']};
+    border: 1px solid {C['line']};
+    border-radius: 8px;
+}}
 
 /* ---------- text roles ---------- */
 QLabel[kicker] {{
@@ -200,7 +207,7 @@ QHeaderView::section {{
     color: {C['faint']};
     border: none;
     border-bottom: 1px solid {C['line']};
-    padding: 7px 8px;
+    padding: 7px 16px 7px 8px;
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 1px;

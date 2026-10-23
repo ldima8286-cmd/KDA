@@ -19,7 +19,7 @@ def build_profile(player: Player, matches: list[Match]) -> dict[str, Any]:
     total = len(parts)
 
     hero_stats: dict[int, dict[str, Any]] = defaultdict(
-        lambda: {"hero_id": 0, "name": "", "matches": 0, "wins": 0, "kda": []}
+        lambda: {"hero_id": 0, "name": "", "matches": 0, "wins": 0, "k": 0, "d": 0, "a": 0}
     )
     for p in parts:
         bucket = hero_stats[p.hero_id]
@@ -27,7 +27,9 @@ def build_profile(player: Player, matches: list[Match]) -> dict[str, Any]:
         bucket["name"] = p.hero_name or str(p.hero_id)
         bucket["matches"] += 1
         bucket["wins"] += int(p.win)
-        bucket["kda"].append(p.kda)
+        bucket["k"] += p.kills
+        bucket["d"] += p.deaths
+        bucket["a"] += p.assists
 
     heroes = []
     for bucket in hero_stats.values():
@@ -38,7 +40,11 @@ def build_profile(player: Player, matches: list[Match]) -> dict[str, Any]:
                 "matches": bucket["matches"],
                 "wins": bucket["wins"],
                 "winrate": round(100.0 * bucket["wins"] / bucket["matches"], 1),
-                "avg_kda": _avg(bucket["kda"]),
+                # Ratio of totals (like Dotabuff) so it matches the K/D/A line;
+                # averaging per-match KDA is skewed by zero-death stomps.
+                "avg_kda": round(
+                    (bucket["k"] + bucket["a"]) / max(bucket["d"], 1), 2
+                ),
             }
         )
     heroes.sort(key=lambda h: (h["matches"], h["winrate"]), reverse=True)
@@ -82,7 +88,13 @@ def build_profile(player: Player, matches: list[Match]) -> dict[str, Any]:
             "avg_kills": _avg([p.kills for p in parts]),
             "avg_deaths": _avg([p.deaths for p in parts]),
             "avg_assists": _avg([p.assists for p in parts]),
-            "avg_kda": _avg([p.kda for p in parts]),
+            "avg_kda": round(
+                (
+                    sum(p.kills for p in parts) + sum(p.assists for p in parts)
+                )
+                / max(sum(p.deaths for p in parts), 1),
+                2,
+            ),
             "avg_gpm": _avg([p.gpm for p in parts]),
             "avg_xpm": _avg([p.xpm for p in parts]),
             "total_hours": round(sum(m.duration for m in matches) / 3600.0, 1),

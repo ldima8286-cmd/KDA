@@ -6,6 +6,8 @@ from typing import Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from ...format import fmt_int
+from ..theme import C
 from ..widgets import Panel, hero_cell, make_table, row_id, set_row_id, set_text
 
 _MODES = (("pro", "Pro"), ("pub", "Пабы"))
@@ -13,6 +15,19 @@ _MODES = (("pro", "Pro"), ("pub", "Пабы"))
 _LABELS = {
     "dota2": ("героев", "Герой"),
     "cs2": ("карт", "Карта"),
+}
+
+
+_ROLE_RU = {
+    "carry": "Керри",
+    "support": "Поддержка",
+    "nuker": "Нюкер",
+    "disabler": "Дизейбл",
+    "initiator": "Инициатор",
+    "durable": "Стойкий",
+    "escape": "Побег",
+    "pusher": "Пушер",
+    "jungler": "Лесник",
 }
 
 
@@ -24,7 +39,7 @@ class MetaHubPanel(QWidget):
         self._meta: dict[str, Any] = {}
         self._mode = "pro"
         self._game = "dota2"
-        self._headers = ["Герой", "Pro pick", "Pro WR", "Pub pick", "Pub WR", "Роли"]
+        self._headers = ["Герой", "Пики Pro", "Pro WR", "Пики пабов", "Pub WR", "Роли"]
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(26, 22, 26, 22)
@@ -56,6 +71,7 @@ class MetaHubPanel(QWidget):
             list(self._headers),
             numeric={1, 2, 3, 4},
             clickable=True,
+            first_width=200,
         )
         self._panel.add(self._table)
         group.buttonClicked.connect(self._on_mode_clicked)
@@ -74,9 +90,9 @@ class MetaHubPanel(QWidget):
             return
         self._game = game
         noun, subject = _LABELS.get(game, ("героев", "Герой"))
-        roles = "Тип" if game == "cs2" else "Роли"
-        pick = "Игр" if game == "cs2" else "Pro pick"
-        pick_pub = "Игр" if game == "cs2" else "Pub pick"
+        roles = "Сайты" if game == "cs2" else "Роли"
+        pick = "Игр" if game == "cs2" else "Пики Pro"
+        pick_pub = "Игр" if game == "cs2" else "Пики пабов"
         self._panel.title_label.setText("Мета карт" if game == "cs2" else "Мета героев")
         self._panel.note_label.setText(f"загрузка…")
         self._table.setHorizontalHeaderLabels(
@@ -104,11 +120,19 @@ class MetaHubPanel(QWidget):
             self._table.setCellWidget(
                 row, 0, hero_cell(hero.get("img"), hero["name"], icon_url=hero.get("icon"))
             )
-            set_text(self._table, row, 1, hero["pro_pick"], mono=True, right=True, numeric=True)
-            set_text(self._table, row, 2, hero["pro_winrate"], mono=True, right=True, numeric=True)
-            set_text(self._table, row, 3, hero["pub_pick"], mono=True, right=True, numeric=True)
-            set_text(self._table, row, 4, hero["pub_winrate"], mono=True, right=True, numeric=True)
-            set_text(self._table, row, 5, ", ".join(hero.get("roles") or []) or "—")
+            set_text(self._table, row, 1, fmt_int(hero["pro_pick"]), mono=True, right=True, numeric=True)
+            set_text(
+                self._table, row, 2, f"{hero['pro_winrate']:.1f}%", mono=True, right=True,
+                numeric=True, color=C["win"] if hero["pro_winrate"] >= 50 else C["loss"],
+            )
+            set_text(self._table, row, 3, fmt_int(hero["pub_pick"]), mono=True, right=True, numeric=True)
+            set_text(
+                self._table, row, 4, f"{hero['pub_winrate']:.1f}%", mono=True, right=True,
+                numeric=True, color=C["win"] if hero["pub_winrate"] >= 50 else C["loss"],
+            )
+            sep = " · " if self._game == "cs2" else ", "
+            roles = [_ROLE_RU.get(str(r).lower(), str(r)) for r in (hero.get("roles") or [])]
+            set_text(self._table, row, 5, sep.join(roles) or "—")
 
         if rows:
             self._table.setSortingEnabled(True)

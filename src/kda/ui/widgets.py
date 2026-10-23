@@ -177,17 +177,25 @@ class ItemIcon(QFrame):
         self._label = QLabel(self)
         self._label.setGeometry(0, 0, self.SIZE, self.SIZE)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        if url:
-            cache = ImageCache.instance()
-            cached = cache.cached(url)
-            if cached is not None:
-                self._label.setPixmap(self._scaled(cached))
-            else:
-                cache.loaded.connect(self._on_loaded)
-                self._url = url
-                cache.request(url)
-        else:
-            self._url = ""
+        self._wired = False
+        self._url = ""
+        self.set_source(url)
+
+    def set_source(self, url: str | None) -> None:
+        self._url = url or ""
+        if not self._url:
+            self._label.clear()
+            return
+        cache = ImageCache.instance()
+        cached = cache.cached(self._url)
+        if cached is not None:
+            self._label.setPixmap(self._scaled(cached))
+            return
+        self._label.clear()
+        if not self._wired:
+            cache.loaded.connect(self._on_loaded)
+            self._wired = True
+        cache.request(self._url)
 
     def _scaled(self, pixmap: QPixmap) -> QPixmap:
         if pixmap.isNull():
@@ -326,6 +334,7 @@ class RankBadge(QWidget):
 def item_cell(metas: list[dict[str, str]], limit: int = 6) -> QWidget:
     """Row of item tiles (six by default) plus the neutral slot."""
     wrap = QWidget()
+    wrap.setStyleSheet("background: transparent;")
     lay = QHBoxLayout(wrap)
     lay.setContentsMargins(4, 2, 4, 2)
     lay.setSpacing(3)
@@ -350,6 +359,41 @@ def row_id(table: QTableWidget, row: int) -> int | None:
     return int(value) if value is not None else None
 
 
+class ElidedLabel(QLabel):
+    """Single-line label that ellipsises against its *actual* width.
+
+    Table columns are pinned to fixed widths, so a hard-coded elide budget can
+    still overflow and clip mid-word. Re-eliding on resize keeps the text tidy
+    whatever width the column ends up with.
+    """
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setToolTip(text)
+        self._elide()
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt naming
+        self._full = text
+        self.setToolTip(text)
+        self._elide()
+
+    def full_text(self) -> str:
+        return self._full
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self._elide()
+
+    def _elide(self) -> None:
+        width = max(0, self.width() - 2)
+        text = self.fontMetrics().elidedText(
+            self._full, Qt.TextElideMode.ElideRight, width
+        )
+        super().setText(text)
+
+
 def hero_cell(
     url: str | None,
     name: str,
@@ -368,15 +412,49 @@ def hero_cell(
     if not icon_url and url and "/heroes/" in url and "/heroes/icons/" not in url:
         icon_url = url.replace("/heroes/", "/heroes/icons/")
     wrap = QWidget()
+    wrap.setStyleSheet("background: transparent;")
     lay = QHBoxLayout(wrap)
-    lay.setContentsMargins(8, 5, 8, 5)
-    lay.setSpacing(11)
-    icon = HeroIcon(icon_url or url)
-    icon.resize_icon(size)
-    lay.addWidget(icon)
-    label = QLabel(name)
+    lay.setContentsMargins(6, 5, 6, 5)
+    lay.setSpacing(9)
+    if icon_url or url:
+        icon = HeroIcon(icon_url or url)
+        icon.resize_icon(size)
+        # The app stylesheet's border/rounded background would paint over the
+        # pixmap inside a table cell; the pixmap is already rounded.
+        icon.setStyleSheet("background: transparent; border: none;")
+        lay.addWidget(icon)
+    else:
+        lay.addWidget(_initial_tile(name, size))
+    label = ElidedLabel(name)
     label.setProperty("heroName", True)
-    lay.addWidget(label)
+    lay.addWidget(label, 1)
+    return wrap
+
+
+def _initial_tile(name: str, size: int) -> QLabel:
+    """Placeholder badge for rows without an image (e.g. CS2 maps)."""
+    tile = QLabel((name or "?")[:1].upper())
+    tile.setFixedSize(size, size)
+    tile.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    tile.setStyleSheet(
+        f"background: #1a2030; border: 1px solid #2c3648;"
+        f" border-radius: {max(6, round(size / 5))}px;"
+        " color: #8b96ab; font-size: 15px; font-weight: 700; padding: 0;"
+    )
+    return tile
+
+
+def result_badge(win: bool) -> QWidget:
+    """Centred win/loss pill used in match lists."""
+    wrap = QWidget()
+    wrap.setStyleSheet("background: transparent;")
+    lay = QHBoxLayout(wrap)
+    lay.setContentsMargins(8, 4, 8, 4)
+    lay.setSpacing(0)
+    pill = QLabel("ПОБЕДА" if win else "ПОРАЖЕНИЕ")
+    pill.setProperty("badgeWin" if win else "badgeLoss", True)
+    pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lay.addWidget(pill)
     lay.addStretch(1)
     return wrap
 
@@ -418,17 +496,18 @@ class StatCard(QFrame):
         self._value_label.setProperty("value", True)
         inner.addWidget(self._value_label)
 
-        self._sub_label = QLabel(sub) if sub else None
-        if self._sub_label is not None:
-            self._sub_label.setProperty("statSub", True)
-            inner.addWidget(self._sub_label)
+        self._sub_label = QLabel(sub or "")
+        self._sub_label.setProperty("statSub", True)
+        self._sub_label.setVisible(bool(sub))
+        inner.addWidget(self._sub_label)
 
         row.addLayout(inner, 1)
 
     def set_value(self, value: str, sub: str | None = None) -> None:
         self._value_label.setText(value)
-        if self._sub_label is not None and sub is not None:
+        if sub is not None:
             self._sub_label.setText(sub)
+            self._sub_label.setVisible(bool(sub))
 
 
 class TrendChart(QWidget):
@@ -600,11 +679,19 @@ class AdvantageChart(QWidget):
 class NumericItem(QTableWidgetItem):
     """Sorts by numeric value instead of lexicographic text order."""
 
-    def __lt__(self, other: QTableWidgetItem) -> bool:  # noqa: D105
+    @staticmethod
+    def _value(text: str) -> float | None:
+        cleaned = "".join(ch for ch in text if ch not in " \u2009\u00a0%,").replace("\u2014", "")
         try:
-            return float(self.text()) < float(other.text())
+            return float(cleaned)
         except ValueError:
-            return self.text() < other.text()
+            return None
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:  # noqa: D105
+        a, b = self._value(self.text()), self._value(other.text())
+        if a is not None and b is not None:
+            return a < b
+        return self.text() < other.text()
 
 
 class ClickableTable(QTableWidget):
@@ -623,6 +710,7 @@ def make_table(
     numeric: set[int] | None = None,
     clickable: bool = False,
     row_height: int = 52,
+    first_width: int | None = None,
 ) -> QTableWidget:
     """Bare, flat analytics table: no grid, no selection, sortable headers."""
     numeric = numeric or set()
@@ -642,12 +730,27 @@ def make_table(
     header.setStretchLastSection(True)
     header.setHighlightSections(False)
     for i in range(len(headers)):
-        mode = (
-            QHeaderView.ResizeMode.ResizeToContents
-            if i in numeric
-            else QHeaderView.ResizeMode.Stretch
-        )
+        if i == 0 and first_width:
+            # Pin the icon column: a fixed width guarantees a thumbnail and its
+            # label can never be squeezed into a sliver by column sizing.
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.Fixed)
+            header.resizeSection(0, int(first_width))
+            continue
+        if i == 0:
+            mode = QHeaderView.ResizeMode.ResizeToContents
+        elif i in numeric:
+            mode = QHeaderView.ResizeMode.ResizeToContents
+        else:
+            mode = QHeaderView.ResizeMode.Stretch
         header.setSectionResizeMode(i, mode)
+    for i in range(len(headers)):
+        item = table.horizontalHeaderItem(i)
+        if item is None:
+            continue
+        if i in numeric:
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        else:
+            item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     return table
 
 

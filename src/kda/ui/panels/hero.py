@@ -5,6 +5,7 @@ from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -65,16 +66,23 @@ class HeroPanel(QWidget):
 
         title_panel = Panel()
         title_row = QHBoxLayout()
-        title_row.setSpacing(16)
+        title_row.setSpacing(18)
         self.hero_icon = HeroIcon()
-        self.hero_icon.setFixedSize(48, 48)
+        self.hero_icon.resize_icon(64)
         self.hero_name = QLabel("—")
         self.hero_name.setProperty("title", True)
-        title_row.addWidget(self.hero_icon)
-        title_row.addWidget(self.hero_name, 1)
+        name_box = QVBoxLayout()
+        name_box.setSpacing(3)
+        name_box.addWidget(self.hero_name)
         self.positions_label = QLabel("")
-        self.positions_label.setProperty("statLabel", True)
-        title_row.addWidget(self.positions_label)
+        self.positions_label.setProperty("muted", True)
+        name_box.addWidget(self.positions_label)
+        title_row.addWidget(self.hero_icon)
+        title_row.addLayout(name_box, 1)
+        self._patch_chip = QLabel("")
+        self._patch_chip.setProperty("chipAccent", True)
+        self._patch_chip.hide()
+        title_row.addWidget(self._patch_chip, 0, Qt.AlignmentFlag.AlignTop)
         title_panel.add_layout(title_row)
         content.addWidget(title_panel)
 
@@ -87,13 +95,13 @@ class HeroPanel(QWidget):
         split.addWidget(dur_panel, 3)
 
         matchups_panel = Panel("Против кого")
-        self.matchups_table = make_table(["Герой", "Игр", "WR"], numeric={1, 2})
+        self.matchups_table = make_table(["Герой", "Игр", "WR"], numeric={1, 2}, first_width=200)
         matchups_panel.add(self.matchups_table)
         split.addWidget(matchups_panel, 2)
 
         content.addLayout(split)
 
-        build_panel = Panel("Раскачка способностей", "порядок по уровням")
+        build_panel = Panel("Раскачка способностей", "порядок прокачки")
         filt = QHBoxLayout()
         filt.setSpacing(6)
         filt.addStretch(1)
@@ -169,19 +177,26 @@ class HeroPanel(QWidget):
         talents_grid = QGridLayout()
         talents_grid.setHorizontalSpacing(18)
         talents_grid.setVerticalSpacing(10)
-        self._talent_boxes: dict[int, QWidget] = {}
+        self._talent_boxes: dict[int, QFrame] = {}
         self._talent_labels: dict[int, QLabel] = {}
         self._talent_shares: dict[int, QLabel] = {}
+        self._talent_icons: dict[int, object] = {}
         for row, tier in enumerate(_TALENT_TIERS):
             tier_lab = QLabel(f"Тир {tier}")
             tier_lab.setProperty("panelTitle", True)
             talents_grid.addWidget(tier_lab, row * 2, 0, 1, 2)
             for col in (0, 1):
-                box = QWidget()
+                from ..widgets import ItemIcon
+
+                box = QFrame()
                 box.setProperty("role", "panel2")
                 lay = QHBoxLayout(box)
                 lay.setContentsMargins(10, 8, 10, 8)
                 lay.setSpacing(10)
+                icon = ItemIcon()
+                icon.setVisible(False)
+                self._talent_icons[(tier, col)] = icon
+                lay.addWidget(icon)
                 name = QLabel("—")
                 name.setWordWrap(True)
                 lay.addWidget(name, 1)
@@ -208,6 +223,7 @@ class HeroPanel(QWidget):
             lab = QLabel(label.upper())
             lab.setProperty("statLabel", True)
             host = QWidget()
+            host.setStyleSheet("background: transparent;")
             host_lay = QHBoxLayout(host)
             host_lay.setContentsMargins(0, 0, 0, 0)
             host_lay.setSpacing(4)
@@ -233,7 +249,7 @@ class HeroPanel(QWidget):
         positions = data.get("positions") or {}
         if positions.get("total"):
             self.positions_label.setText(
-                f"кора · {positions.get('core_share', 0)}%    саппорт · "
+                f"Кора {positions.get('core_share', 0)}%  ·  Саппорт "
                 f"{positions.get('support_share', 0)}%"
             )
             self.positions_label.show()
@@ -264,6 +280,12 @@ class HeroPanel(QWidget):
         self._fill_items(data.get("items") or {})
 
         self._build_data = data.get("build") or {}
+        patch = (self._build_data or {}).get("patch")
+        if patch:
+            self._patch_chip.setText(f"патч {patch}")
+            self._patch_chip.show()
+        else:
+            self._patch_chip.hide()
         self._apply_build_filter()
 
         self._body.show()
@@ -373,6 +395,9 @@ class HeroPanel(QWidget):
                     name.setText(opt.get("name") or "—")
                     self._talent_shares[(tier, col)].setText(f"{opt.get('share', 0)}%")
                     box.setToolTip(f"{opt.get('picks', 0)} взятий · {opt.get('share', 0)}%")
+                    icon = self._talent_icons[(tier, col)]
+                    icon.set_source(opt.get("img"))
+                    icon.setVisible(bool(opt.get("img")))
                     box.show()
                 else:
                     box.hide()
@@ -397,6 +422,7 @@ class HeroPanel(QWidget):
         from ..widgets import ItemIcon
 
         host = QWidget()
+        host.setStyleSheet("background: transparent;")
         box = QVBoxLayout(host)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(2)
