@@ -24,6 +24,7 @@ from ..widgets import (
     TrendChart,
     hero_cell,
     make_table,
+    result_badge,
     set_text,
 )
 
@@ -105,8 +106,15 @@ class SkillLabPanel(QWidget):
         split.addWidget(chart_panel, 3)
 
         heroes_panel = Panel("Лучшие герои", "по последним матчам")
-        self.heroes_table = make_table(["Герой", "Игр", "WR", "KDA"], numeric={1, 2, 3})
+        self.heroes_table = make_table(
+            ["Герой", "Игр", "WR", "KDA"], numeric={1, 2, 3}, first_width=200, row_height=44
+        )
         heroes_panel.add(self.heroes_table)
+        self.heroes_empty = QLabel("Нет матчей за последнее время")
+        self.heroes_empty.setProperty("empty", True)
+        self.heroes_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.heroes_empty.hide()
+        heroes_panel.add(self.heroes_empty)
         split.addWidget(heroes_panel, 2)
 
         content.addLayout(split)
@@ -143,9 +151,15 @@ class SkillLabPanel(QWidget):
         popular_head = QLabel("ПОПУЛЯРНЫЕ ГЕРОИ · ЗА ВСЮ ИСТОРИЮ")
         popular_head.setProperty("sectionLabel", True)
         career_panel.add(popular_head)
-        self.popular_table = make_table(["Герой", "Игр", "W / L", "WR"], numeric={1, 2, 3})
-        self.popular_table.setMaximumHeight(230)
+        self.popular_table = make_table(
+            ["Герой", "Игр", "W / L", "WR"], numeric={1, 2, 3}, first_width=200, row_height=44
+        )
         career_panel.add(self.popular_table)
+        self.popular_empty = QLabel("Нет данных по героям")
+        self.popular_empty.setProperty("empty", True)
+        self.popular_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.popular_empty.hide()
+        career_panel.add(self.popular_empty)
         content.addWidget(career_panel)
 
         # --- recent matches ---
@@ -154,6 +168,7 @@ class SkillLabPanel(QWidget):
             ["Герой", "Итог", "K / D / A", "GPM / XPM", "Длит.", "Когда"],
             numeric={2, 3, 4, 5},
             clickable=True,
+            first_width=200,
         )
         self.recent_table.rowClicked.connect(self._on_recent_clicked)
         recent_panel.add(self.recent_table)
@@ -194,6 +209,9 @@ class SkillLabPanel(QWidget):
         self.chart.set_points(profile.get("trend") or [])
 
         heroes = (profile.get("heroes") or [])[:12]
+        self.heroes_table.setMinimumHeight(40 + min(max(len(heroes), 3), 6) * 44)
+        self.heroes_table.setVisible(bool(heroes))
+        self.heroes_empty.setVisible(not heroes)
         self.heroes_table.setRowCount(len(heroes))
         for row, hero in enumerate(heroes):
             self.heroes_table.setCellWidget(
@@ -207,6 +225,7 @@ class SkillLabPanel(QWidget):
 
         recent = profile.get("recent") or []
         self._recent_ids = [int(m["match_id"]) for m in recent]
+        self.recent_table.setMinimumHeight(40 + min(max(len(recent), 3), 7) * 44)
         self.recent_table.setRowCount(len(recent))
         for row, match in enumerate(recent):
             self.recent_table.setCellWidget(
@@ -214,13 +233,7 @@ class SkillLabPanel(QWidget):
                 0,
                 hero_cell(match.get("img"), match["hero_name"], icon_url=match.get("icon")),
             )
-            set_text(
-                self.recent_table,
-                row,
-                1,
-                "Победа" if match["win"] else "Поражение",
-                color=C["win"] if match["win"] else C["loss"],
-            )
+            self.recent_table.setCellWidget(row, 1, result_badge(bool(match["win"])))
             set_text(
                 self.recent_table,
                 row,
@@ -267,6 +280,9 @@ class SkillLabPanel(QWidget):
             self._career_values[key].setText(fmt_int(value) if value else "—")
 
         popular = career.get("popular_heroes") or []
+        self.popular_table.setFixedHeight(40 + min(max(len(popular), 3), 5) * 44)
+        self.popular_table.setVisible(bool(popular))
+        self.popular_empty.setVisible(not popular)
         self.popular_table.setRowCount(len(popular))
         for row, hero in enumerate(popular):
             label = hero.get("name") or f"#{hero['hero_id']}"

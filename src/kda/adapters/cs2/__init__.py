@@ -143,7 +143,7 @@ class CS2Adapter(GameAdapter):
                     game=self.slug,
                     hero_id=i,
                     name=m["name"],
-                    roles=["map"],
+                    roles=list(m.get("sites") or []),
                     pro_pick=picks,
                     pro_win=wins,
                     pub_pick=picks,

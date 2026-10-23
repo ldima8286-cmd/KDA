@@ -40,7 +40,7 @@ _LOBBY_TYPES = {
 
 
 def fmt_int(value: float | int | None) -> str:
-    return "—" if value in (None, "") else f"{int(value):,}"
+    return "—" if value in (None, "") else f"{int(value):,}".replace(",", "\u2009")
 
 
 def fmt_k(value: float | int | None) -> str:

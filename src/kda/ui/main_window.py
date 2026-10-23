@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import __version__
 from ..services import KdaService
 from . import workers
 from .panels import (
@@ -88,8 +89,12 @@ class MainWindow(QMainWindow):
         brand.setProperty("brand", True)
         brand_sub = QLabel("ESPORTS INTELLIGENCE")
         brand_sub.setProperty("brandSub", True)
+        version = QLabel(f"сборка v{__version__}")
+        version.setProperty("brandSub", True)
+        version.setToolTip("Версия приложения — обновите её, если видите старые данные")
         brand_box.addWidget(brand)
         brand_box.addWidget(brand_sub)
+        brand_box.addWidget(version)
         lay.addLayout(brand_box)
 
         self._nav_buttons: dict[str, QPushButton] = {}
@@ -230,7 +235,10 @@ class MainWindow(QMainWindow):
         self.home_panel.set_meta(meta)
         self.meta_hub_panel.set_meta(meta)
         stamp = datetime.now().strftime("%H:%M")
-        self.set_status(f"данные обновлены · {stamp}", "ok")
+        if getattr(self.service, "offline", False):
+            self.set_status(f"офлайн-снапшот · {stamp}", "idle")
+        else:
+            self.set_status(f"данные обновлены · {stamp}", "ok")
 
     def _on_error(self, message: str) -> None:
         text = str(message)
@@ -336,6 +344,11 @@ class MainWindow(QMainWindow):
         self.set_status("парсинг запрошен" if ok else "парсинг недоступен", "ok" if ok else "err")
 
     def _load_hero(self, hero_id: int) -> None:
+        if self._game != "dota2":
+            # CS2 has no per-hero (map) detail page yet; do not submit a call
+            # the adapter cannot serve.
+            self.set_status("детальная страница карты для CS2 — в следующем обновлении", "idle")
+            return
         self.show_panel("hero")
         self.hero_panel.clear()
         self.set_status(f"загрузка героя {hero_id}…", "busy")

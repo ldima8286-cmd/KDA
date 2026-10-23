@@ -47,19 +47,26 @@ class KdaService:
         player = adapter.player(account_id)
         matches = adapter.recent_matches(account_id, limit=limit)
         data = skill_lab.build_profile(player, matches)
+        return self._with_images(adapter, data)
 
+    @staticmethod
+    def _with_images(adapter, data: dict[str, Any]) -> dict[str, Any]:
+        """Attach banner + square-portrait URLs to hero rows (best effort)."""
         hero_image = getattr(adapter, "hero_image", None)
         hero_icon = getattr(adapter, "hero_icon", None)
-        for row in data.get("heroes", []):
-            if callable(hero_image):
-                row["img"] = hero_image(row["hero_id"])
-            if callable(hero_icon):
-                row["icon"] = hero_icon(row["hero_id"])
-        for row in data.get("recent", []):
-            if callable(hero_image):
-                row["img"] = hero_image(row["hero_id"])
-            if callable(hero_icon):
-                row["icon"] = hero_icon(row["hero_id"])
+        rows = list(data.get("heroes") or []) + list(data.get("recent") or [])
+        for row in rows:
+            hero_id = row.get("hero_id")
+            if hero_id is None:
+                continue
+            try:
+                if callable(hero_image):
+                    row["img"] = hero_image(hero_id)
+                if callable(hero_icon):
+                    row["icon"] = hero_icon(hero_id)
+            except Exception:  # noqa: BLE001 - artwork is cosmetic
+                row["img"] = row.get("img")
+                row["icon"] = row.get("icon")
         return data
 
     def career(self, account_id: int, game: str = "dota2") -> dict[str, Any]:
@@ -79,6 +86,7 @@ class KdaService:
         adapter = self.adapter(game)
         detail = adapter.match_detail(match_id)
         data = skill_lab.match_summary(detail)
+        data["patch"] = self._patch_label(adapter, getattr(detail.match, "patch", None))
 
         item_info = getattr(adapter, "item_info", None)
         if callable(item_info):
@@ -86,6 +94,22 @@ class KdaService:
                 for row in data[side]:
                     row["item_meta"] = [item_info(i) for i in row["items"]]
         return data
+
+    @staticmethod
+    def _patch_label(adapter, value: Any) -> str | None:
+        """OpenDota stores a numeric patch id (60); the UI needs '7.41'."""
+        if not value:
+            return None
+        if isinstance(value, str) and not value.isdigit():
+            return value
+        client = getattr(adapter, "client", None)
+        try:
+            for patch in client.patches(limit=8):
+                if int(patch.get("id") or -1) == int(value):
+                    return patch.get("name")
+        except Exception:  # noqa: BLE001 - cosmetic label, never fatal
+            return None
+        return None
 
     def request_parse(self, match_id: int, game: str = "dota2") -> bool:
         adapter = self.adapter(game)
@@ -110,17 +134,19 @@ class KdaService:
         adapter = self.adapter(game)
         acc_a = self._resolve_player(id_a, game)
         acc_b = self._resolve_player(id_b, game)
-        career_a = skill_lab.career_from_stats(adapter.career_stats(acc_a))
-        career_b = skill_lab.career_from_stats(adapter.career_stats(acc_b))
+        career_a = self.career(acc_a, game)
+        career_b = self.career(acc_b, game)
         prof_a = skill_lab.build_profile(adapter.player(acc_a), adapter.recent_matches(acc_a, 20))
         prof_b = skill_lab.build_profile(adapter.player(acc_b), adapter.recent_matches(acc_b, 20))
         return {
-            "a": {**prof_a, "career": career_a},
-            "b": {**prof_b, "career": career_b},
+            "a": {**self._with_images(adapter, prof_a), "career": career_a},
+            "b": {**self._with_images(adapter, prof_b), "career": career_b},
         }
 
     def hero_detail(self, hero_id: int, game: str = "dota2") -> dict[str, Any]:
         adapter = self.adapter(game)
+        if not callable(getattr(adapter, "hero_detail", None)):
+            raise ValueError("детальная страница карты для CS2 ещё не поддерживается")
         raw = adapter.hero_detail(hero_id)
         data = skill_lab.hero_from_raw(raw, self._hero_names(game))
 

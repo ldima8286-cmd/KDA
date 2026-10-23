@@ -48,7 +48,7 @@ class ProPanel(QWidget):
         )
         self.matches_table.rowClicked.connect(self._on_match_clicked)
         matches_panel.add(self.matches_table)
-        content.addWidget(matches_panel)
+        content.addWidget(matches_panel, 3)
 
         split = QHBoxLayout()
         split.setSpacing(14)
@@ -64,8 +64,7 @@ class ProPanel(QWidget):
         players_panel.add(self.players_table)
         split.addWidget(players_panel, 1)
 
-        content.addLayout(split)
-        content.addStretch(1)
+        content.addLayout(split, 2)
         scroll.setWidget(body)
         outer.addWidget(scroll, 1)
 
@@ -115,7 +114,8 @@ class ProPanel(QWidget):
             set_text(self.teams_table, row, 0, name)
             set_text(self.teams_table, row, 1, t["rating"], mono=True, right=True)
             set_text(self.teams_table, row, 2, f"{t['wins']} / {t['losses']}", mono=True, right=True)
-            set_text(self.teams_table, row, 3, f"{t['winrate']}%", mono=True, right=True)
+            set_text(self.teams_table, row, 3, f"{t['winrate']}%", mono=True, right=True,
+                     color=C["win"] if t["winrate"] >= 50 else C["loss"])
 
         players = (data.get("players") or [])[:100]
         self._player_ids = [int(p["account_id"]) for p in players]
@@ -124,7 +124,7 @@ class ProPanel(QWidget):
             set_text(self.players_table, row, 0, p["name"])
             team = f"{p['team_name']} [{p['team_tag']}]" if p["team_tag"] else (p["team_name"] or "—")
             set_text(self.players_table, row, 1, team)
-            set_text(self.players_table, row, 2, p.get("country") or "—")
+            set_text(self.players_table, row, 2, (p.get("country") or "—").upper(), mono=True)
 
     def _on_match_clicked(self, row: int) -> None:
         if 0 <= row < len(self._match_ids):

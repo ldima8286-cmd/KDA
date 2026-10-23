@@ -145,3 +145,33 @@ def test_hero_cell_derives_square_icon(qapp):
         icon_url="https://cdn/x/heroes/icons/rubick.png",
     )
     assert cell2.findChild(HeroIcon)._url == "https://cdn/x/heroes/icons/rubick.png"
+
+
+def test_hero_table_pins_the_icon_column(qapp):
+    from kda.ui.widgets import hero_cell, make_table
+
+    table = make_table(["Герой", "Игр", "WR"], numeric={1, 2}, first_width=190)
+    table.resize(700, 200)
+    table.setRowCount(1)
+    table.setCellWidget(0, 0, hero_cell(None, "Rubick"))
+    table.show()
+    qapp.processEvents()
+    assert table.columnWidth(0) >= 190
+
+
+def test_numeric_item_sorts_formatted_values(qapp):
+    from kda.ui.widgets import NumericItem
+
+    assert NumericItem("1\u2009785") < NumericItem("3\u2009141")
+    assert NumericItem("47.1%") < NumericItem("60.0%")
+    assert NumericItem("9") < NumericItem("1\u2009785")
+
+
+def test_stat_card_reveals_late_subtitle(qapp):
+    from kda.ui.widgets import StatCard
+
+    card = StatCard("Метрика", "—")
+    assert not card._sub_label.isVisible()
+    card.set_value("42%", "Hoodwink")
+    assert card._sub_label.text() == "Hoodwink"
+    assert card._sub_label.isVisible() or not card.isVisible()

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from ...format import fmt_int, rank_name
 from ..theme import C
-from ..widgets import Avatar, Panel
+from ..widgets import Avatar, Panel, hero_cell, make_table, set_text
 
 
 def _num(value: object) -> str:
@@ -36,7 +36,7 @@ class _CompareRow(QWidget):
 
     def __init__(self, label: str, va: str, vb: str, na: float, nb: float,
                  higher_better: bool = True, lower_better: bool = False,
-                 parent: QWidget | None = None) -> None:
+                 show_bar: bool = True, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._va, self._vb = va, vb
 
@@ -69,9 +69,10 @@ class _CompareRow(QWidget):
         head.addWidget(self._lb, 1)
         outer.addLayout(head)
 
-        bar = _RatioBar(na, nb)
-        bar.setFixedHeight(6)
-        outer.addWidget(bar)
+        if show_bar:
+            bar = _RatioBar(na, nb)
+            bar.setFixedHeight(6)
+            outer.addWidget(bar)
 
 
 class _RatioBar(QWidget):
@@ -176,90 +177,62 @@ class _DualTrendChart(QWidget):
 
 
 class _HeroPoolCard(QWidget):
-    """Side-by-side top heroes for A and B with winrate bars."""
+    """Side-by-side hero pools for A and B, each a compact hero table."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        outer = QVBoxLayout(self)
+        outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(8)
-        self._grid = QGridLayout()
-        self._grid.setHorizontalSpacing(18)
-        self._grid.setVerticalSpacing(4)
-        outer.addLayout(self._grid)
+        outer.setSpacing(18)
+
+        self._ta = make_table(["Герой", "Игр", "WR"], numeric={1, 2}, first_width=200, row_height=44)
+        self._tb = make_table(["Герой", "Игр", "WR"], numeric={1, 2}, first_width=200, row_height=44)
+        for table, tag in ((self._ta, "A"), (self._tb, "B")):
+            box = QVBoxLayout()
+            box.setSpacing(6)
+            label = QLabel(tag)
+            label.setProperty("statLabel", True)
+            box.addWidget(label)
+            box.addWidget(table)
+            outer.addLayout(box, 1)
 
     def set_data(self, a: list[dict[str, Any]], b: list[dict[str, Any]]) -> None:
-        while self._grid.count():
-            item = self._grid.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        head = ("лк", "игр", "WR", "игр", "WR", "лк")
-        for col, text in enumerate(head):
-            label = QLabel(text)
-            label.setProperty("statLabel", True)
-            align = Qt.AlignmentFlag.AlignCenter
-            if col < 3:
-                align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            else:
-                align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            label.setAlignment(align)
-            self._grid.addWidget(label, 0, col)
-
-        rows = max(len(a), len(b))
-        for i in range(rows):
-            self._add_side(i + 1, 0, a[i] if i < len(a) else None, right=True)
-            self._add_side(i + 1, 3, b[i] if i < len(b) else None, right=False)
-
-    def _add_side(self, row: int, col: int, hero: dict[str, Any] | None, right: bool) -> None:
-        if hero is None:
-            return
-        name = _elide(str(hero.get("name") or hero.get("hero_id")), 16)
-        games = str(hero.get("matches", "—"))
-        wr = float(hero.get("winrate") or 0.0)
-        wr_text = f"{wr:.0f}%"
-        color = C["win"] if wr >= 50 else C["loss"]
-        if right:
-            w_name = QLabel(f"{name}")
-            w_name.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            w_games = QLabel(games)
-            w_games.setProperty("mono", True)
-            w_games.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            w_wr = QLabel(wr_text)
-            w_wr.setProperty("mono", True)
-            w_wr.setStyleSheet(f"color: {color};")
-            w_wr.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._grid.addWidget(w_name, row, col)
-            self._grid.addWidget(w_games, row, col + 1)
-            self._grid.addWidget(w_wr, row, col + 2)
-        else:
-            w_name = QLabel(f"{name}")
-            w_games = QLabel(games)
-            w_games.setProperty("mono", True)
-            w_wr = QLabel(wr_text)
-            w_wr.setProperty("mono", True)
-            w_wr.setStyleSheet(f"color: {color};")
-            w_wr.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            self._grid.addWidget(w_name, row, col)
-            self._grid.addWidget(w_games, row, col + 1)
-            self._grid.addWidget(w_wr, row, col + 2)
+        rows = max(len(a), len(b), 1)
+        for table in (self._ta, self._tb):
+            table.setFixedHeight(40 + rows * 44)
+        for table, heroes in ((self._ta, a), (self._tb, b)):
+            table.setRowCount(len(heroes))
+            for row, hero in enumerate(heroes):
+                table.setCellWidget(
+                    row,
+                    0,
+                    hero_cell(hero.get("img"), str(hero.get("name") or hero.get("hero_id")),
+                              icon_url=hero.get("icon")),
+                )
+                set_text(table, row, 1, fmt_int(hero.get("matches")), mono=True, right=True)
+                wr = float(hero.get("winrate") or 0.0)
+                set_text(
+                    table, row, 2, f"{wr:.0f}%", mono=True, right=True,
+                    color=C["win"] if wr >= 50 else C["loss"],
+                )
 
 
 class ComparePanel(QWidget):
     compareRequested = Signal(str, str)
 
     _ROWS = (
-        ("Winrate (20)", lambda c: f"{c['summary']['winrate']}", "up"),
+        ("Winrate (20)", lambda c: f"{c['summary']['winrate']}%", "up"),
         ("KDA", lambda c: f"{c['summary']['avg_kda']}", "up"),
         ("GPM", lambda c: f"{c['summary']['avg_gpm']:.0f}", "up"),
         ("XPM", lambda c: f"{c['summary']['avg_xpm']:.0f}", "up"),
-        ("Kills", lambda c: f"{c['summary'].get('avg_kills', 0):.1f}", "up"),
-        ("Deaths", lambda c: f"{c['summary'].get('avg_deaths', 0):.1f}", "down"),
-        ("Assists", lambda c: f"{c['summary'].get('avg_assists', 0):.1f}", "up"),
+        ("Убийства", lambda c: f"{c['summary'].get('avg_kills', 0):.1f}", "up"),
+        ("Смерти", lambda c: f"{c['summary'].get('avg_deaths', 0):.1f}", "down"),
+        ("Помощь", lambda c: f"{c['summary'].get('avg_assists', 0):.1f}", "up"),
         ("Часов", lambda c: f"{c['summary'].get('total_hours', 0):.1f}", "up"),
-        ("Игр (20)", lambda c: f"{c['summary']['matches']}", "up"),
+        ("Матчей (20)", lambda c: fmt_int(c['summary']['matches']), "up"),
         ("Ранг", lambda c: rank_name(c["player"].get("rank_tier")), None),
-        ("Игр всего", lambda c: fmt_int((c["career"].get("wl") or {}).get("games") or 0), "up"),
-        ("WR карьеры", lambda c: f"{c['career']['winrate']}", "up"),
+        ("Матчей всего", lambda c: fmt_int((c["career"].get("wl") or {}).get("games") or 0), "up"),
+        ("WR карьеры", lambda c: f"{c['career']['winrate']}%", "up"),
         ("KDA карьеры", lambda c: _num((c["career"].get("averages") or {}).get("kda")), "up"),
         ("GPM карьеры", lambda c: _num((c["career"].get("averages") or {}).get("gold_per_min")), "up"),
     )
@@ -286,14 +259,14 @@ class ComparePanel(QWidget):
         kicker.setProperty("kicker", True)
         outer.addWidget(kicker)
 
-        form = Panel("Compare two players", "ник или account_id")
+        form = Panel("Сравнение игроков", "ник или account_id")
         row = QHBoxLayout()
         row.setSpacing(10)
         self.input_a = QLineEdit()
         self.input_a.setPlaceholderText("Игрок A — ник или account_id")
         self.input_b = QLineEdit()
         self.input_b.setPlaceholderText("Игрок B — ник или account_id")
-        self.go = QPushButton("Compare")
+        self.go = QPushButton("Сравнить")
         self.go.setProperty("primary", True)
         self.go.setCursor(Qt.CursorShape.PointingHandCursor)
         self.go.clicked.connect(self._submit)
@@ -306,7 +279,7 @@ class ComparePanel(QWidget):
         form.add_layout(row)
         outer.addWidget(form)
 
-        self.status = QLabel("Введи ник или account_id двух игроков и нажми «Compare».")
+        self.status = QLabel("Введи ник или account_id двух игроков и нажми «Сравнить».")
         self.status.setProperty("empty", True)
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(self.status)
@@ -335,7 +308,7 @@ class ComparePanel(QWidget):
         self.head_panel.setVisible(False)
         outer.addWidget(self.head_panel)
 
-        self.body = Panel("Метрики", "A ← синий · зелёный → B")
+        self.body = Panel("Метрики", "A ← бирюзовый · зелёный → B")
         self.rows_layout = QVBoxLayout()
         self.rows_layout.setContentsMargins(0, 0, 0, 0)
         self.rows_layout.setSpacing(2)
@@ -343,7 +316,7 @@ class ComparePanel(QWidget):
         self.body.setVisible(False)
         outer.addWidget(self.body)
 
-        self.trend_panel = Panel("Форма", "винрейт за 20 игр · A синий · B зелёный")
+        self.trend_panel = Panel("Форма", "винрейт за 20 игр · A бирюзовый · B зелёный")
         self.trend = _DualTrendChart()
         self.trend_panel.add(self.trend)
         self.trend_panel.setVisible(False)
@@ -401,6 +374,7 @@ class ComparePanel(QWidget):
             row = _CompareRow(
                 label, va, vb, numa, numb,
                 higher_better=(mode == "up"), lower_better=(mode == "down"),
+                show_bar=(mode is not None),
             )
             self.rows_layout.addWidget(row)
         self.rows_layout.addStretch(1)
@@ -413,7 +387,7 @@ class ComparePanel(QWidget):
     @staticmethod
     def _numeric(a: dict[str, Any], b: dict[str, Any], getter) -> tuple[float, float]:
         def to_num(c: dict[str, Any]) -> float:
-            text = str(getter(c)).replace("%", "").replace(",", "")
+            text = str(getter(c)).replace("%", "").replace(",", "").replace(" ", "").replace("\u2009", "")
             try:
                 return float(text)
             except ValueError:
