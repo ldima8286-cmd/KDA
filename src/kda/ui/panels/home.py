@@ -97,7 +97,7 @@ class HomePanel(QWidget):
         content.setContentsMargins(0, 0, 6, 0)
         content.setSpacing(14)
 
-        contested_panel = Panel("Контестуемые герои (Pro)", "клик по герою в Meta Hub")
+        contested_panel = Panel("Контест-пики (Pro)", "клик по герою в Meta Hub")
         self._cards_host = QWidget()
         self._cards_grid = QGridLayout(self._cards_host)
         self._cards_grid.setContentsMargins(0, 0, 0, 0)
