@@ -23,6 +23,7 @@ class Dota2Adapter(GameAdapter):
         self._meta_constants: dict[str, dict[str, str]] = {}
         self._ability_names: dict[int, str] | None = None
         self._ability_meta: dict[int, dict[str, Any]] | None = None
+        self._talent_tiers: dict[int, dict[int, int]] = {}
 
     # --- lookups ---
 
@@ -162,13 +163,38 @@ class Dota2Adapter(GameAdapter):
             self._ability_names, self._ability_meta = names, meta
         return self._ability_names, self._ability_meta
 
+    def _hero_talent_tiers(self, hero_id: int) -> dict[int, int]:
+        """Map talent ability ids to their tier (10/15/20/25) for this hero."""
+        hero_id = int(hero_id)
+        if hero_id in self._talent_tiers:
+            return self._talent_tiers[hero_id]
+        tiers: dict[int, int] = {}
+        try:
+            names, _ = self._ability_tables()
+            by_name = {name: aid for aid, name in names.items()}
+            internal = {int(h.get("id") or 0): h.get("name") for h in self.client.heroes()}
+            row = (self.client.constants("hero_abilities") or {}).get(internal.get(hero_id)) or {}
+            tier_by_level = {1: 10, 2: 15, 3: 20, 4: 25}
+            for talent in row.get("talents") or []:
+                aid = by_name.get(str(talent.get("name") or ""))
+                tier = tier_by_level.get(int(talent.get("level") or 0))
+                if aid is not None and tier is not None:
+                    tiers[int(aid)] = tier
+        except Exception:  # noqa: BLE001 - tier lookup is optional
+            tiers = {}
+        self._talent_tiers[hero_id] = tiers
+        return tiers
+
     def hero_build(self, hero_id: int) -> dict[str, Any]:
         key = f"hero_build:{int(hero_id)}"
         cached = self.client.cache.get(key)
         if cached is not None:
             return cached
         names, meta = self._ability_tables()
-        out = skill_lab.hero_build_from_raw(self.client.hero_skill_build(hero_id), names, meta)
+        rows, patch = self.client.hero_skill_build(hero_id)
+        out = skill_lab.hero_build_from_raw(
+            rows, names, meta, self._hero_talent_tiers(hero_id), patch
+        )
         self.client.cache.set(key, out, ttl=1800.0)
         return out
 

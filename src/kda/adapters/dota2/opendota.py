@@ -7,6 +7,7 @@ launch clears the cache and pulls current data when online.
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -178,15 +179,67 @@ class OpenDotaClient:
                 time.sleep(1.0 * (attempt + 1))
         raise OpenDotaError(f"explorer query failed: {last_exc}")
 
-    def hero_skill_build(self, hero_id: int, sample: int = 8000) -> list[dict[str, Any]]:
+    def patches(self, limit: int = 4) -> list[dict[str, Any]]:
+        """Recent patches (newest first) with raw and epoch dates.
+
+        OpenDota tracks major versions (7.41); lettered sub-patches fall inside
+        the same window, so filtering by the newest patch date keeps builds
+        current without stale talents from older patches.
+        """
+        cached = self.cache.get("patches")
+        if cached is not None:
+            return cached[:limit]
+        out: list[dict[str, Any]] = []
+        try:
+            raw = self._get("/constants/patch")
+        except Exception:  # noqa: BLE001 - patches are best-effort
+            raw = []
+        for row in raw or []:
+            if not isinstance(row, dict):
+                continue
+            date = str(row.get("date") or "")
+            try:
+                epoch = int(datetime.fromisoformat(date.replace("Z", "+00:00")).timestamp())
+            except ValueError:
+                continue
+            out.append(
+                {"id": row.get("id"), "name": row.get("name"), "date": date, "epoch": epoch}
+            )
+        out.sort(key=lambda item: item["epoch"], reverse=True)
+        self.cache.set("patches", out, ttl=6 * 3600.0)
+        return out[:limit]
+
+    def hero_skill_build(
+        self, hero_id: int, sample: int = 8000, patches_back: int = 3
+    ) -> tuple[list[dict[str, Any]], str | None]:
         """Raw ability-upgrade arrays plus lane/gold, from parsed games.
 
         ``lane_role`` is 1=safe, 2=mid, 3=off, 4=jungle; ``gold_per_min`` lets
-        us split core vs support within each lane.
+        us split core vs support within each lane. Rows are limited to the most
+        recent patch so talents reflect the current game, not old rotations.
         """
+        select = (
+            "SELECT pm.ability_upgrades_arr, pm.lane_role, pm.gold_per_min "
+            "FROM player_matches pm JOIN matches m ON m.match_id = pm.match_id "
+        )
+        try:
+            recent = self.patches(limit=patches_back)
+        except Exception:  # noqa: BLE001
+            recent = []
+        for patch in recent:
+            query = (
+                select
+                + f"WHERE pm.hero_id = {int(hero_id)} "
+                "AND pm.ability_upgrades_arr IS NOT NULL "
+                f"AND m.start_time >= {int(patch['epoch'])} "
+                f"LIMIT {int(sample)}"
+            )
+            rows = self.sql(query)
+            if rows:
+                return rows, str(patch["name"])
         query = (
             "SELECT ability_upgrades_arr, lane_role, gold_per_min FROM player_matches "
             f"WHERE hero_id = {int(hero_id)} AND ability_upgrades_arr IS NOT NULL "
             f"LIMIT {int(sample)}"
         )
-        return self.sql(query)
+        return self.sql(query), None
