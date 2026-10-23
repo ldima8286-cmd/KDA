@@ -185,3 +185,24 @@ def test_hero_cell_without_art_uses_initial_tile(qapp):
     cell = hero_cell(None, "Mirage")
     texts = [label.text() for label in cell.findChildren(QLabel)]
     assert "M" in texts
+
+
+def test_image_cache_decodes_fallback_bytes(qapp):
+    from PySide6.QtCore import QBuffer, QIODevice
+    from PySide6.QtGui import QImage
+
+    from kda.ui.images import ImageCache
+
+    image = QImage(4, 4, QImage.Format.Format_ARGB32)
+    image.fill(0xFF00FF00)
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buffer, "PNG")
+
+    cache = ImageCache()
+    seen = []
+    cache.loaded.connect(lambda url, pixmap: seen.append(url))
+    cache._on_fetched("https://example.test/x.png", bytes(buffer.data()))
+
+    assert cache.cached("https://example.test/x.png") is not None
+    assert seen == ["https://example.test/x.png"]
